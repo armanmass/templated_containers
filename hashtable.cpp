@@ -1,17 +1,21 @@
-import std;
+#include <iostream>
+#include <list>
+#include <utility>
+#include <functional>
+
 using namespace std;
 
-template<int SIZE = 10, typename KeyType, typename ValueType>
+template<typename KeyType, typename ValueType,int SIZE = 10>
 class HashTable {
     public:
-        void insert(const KeyType& _key, const& ValueType& _val){
+        void insert(const KeyType& _key, const ValueType& _val){
             int group = hashFunction(_key);
             bool collision = false;
 
             for(auto& kv_pair : hashTable[group]){
                 if(_key == kv_pair.first){
                     kv_pair.second = _val;
-                    cout << "[ERR] Entry with key " << _key << " overwritten." << endl;
+                    cout << "ERR: Entry with key " << _key << " overwritten." << endl;
                     collision = true;
                     break;
                 }
@@ -28,10 +32,11 @@ class HashTable {
         void remove(const KeyType& _key){
             int group = hashFunction(_key);
             bool removed = true;
+            auto it = hashTable[group].begin();
 
-            for(auto& kv_pair : hashTable[group]){
-                if(_key == kv_pair.first){
-                    hashTable[group].erase(kv_pair);
+            for(; it != hashTable[group].end(); it++){
+                if(_key == it->first){
+                    hashTable[group].erase(it);
                     removed = true;
                     _size--;
                     break;
@@ -68,23 +73,37 @@ class HashTable {
         int size(){ return _size; }
 
     private:
-        const int hashGroups = SIZE;
+        static const int hashGroups = SIZE;
         list<pair<KeyType,ValueType>> hashTable[hashGroups];
         int _size = 0;
 
         int hashFunction(const KeyType& _key){
-            return hash{}(_key) % hashGroups;
+            return hash<KeyType>{}(_key) % hashGroups;
         }
-}
+};
 
 int main(){
-    HashTable<101,int,string> h;
+    HashTable<int,string> h;
     if(h.empty()){
         cout << "HashTable constructed and empty." << endl;
     }else{
         cout << "Incorrect implementation for HT or empty() member." << endl;
     }
-    h.insert(1,"test");
+    h.insert(13242,"test");
+    h.remove(69);
+    h.insert(231,"test2");
+    h.insert(15234,"test3");
+    h.insert(1234,"test4");
+    h.insert(112367,"test5");
+    h.insert(1,"1");
+    h.insert(1,"2");
+    h.remove(1234);
+    h.remove(1234);
+    h.remove(1234);
+
+    cout << h.size() << " elements in table." << endl;
+
+    h.printTable();
 
     return 0;
 }
