@@ -53,7 +53,7 @@ class HashTable {
                 }
             }
             if(!removed){
-                cout << "ERR: Key [" << _key <<  "] not found in table. Nothing removed." << endl;
+                throw std::out_of_range("Key not found in HashTable.");
             }
             return;           
         }
