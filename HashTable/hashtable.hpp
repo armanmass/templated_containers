@@ -25,7 +25,7 @@ class HashTable {
             for(auto& kv_pair : hashTable[group]){
                 if(_key == kv_pair.first){
                     kv_pair.second = _val;
-                    cout << "ERR: Entry with key " << _key << " overwritten." << endl;
+                    // cout << "ERR: Entry with key " << _key << " overwritten." << endl;
                     collision = true;
                     break;
                 }

@@ -40,6 +40,8 @@ TEST_F(HashTableTest, Insertion) {
     intTable->insert(3, "test3");
     intTable->insert(1, "test1");
 
+    EXPECT_EQ(intTable->get(1), "test1");
+
     EXPECT_EQ(intTable->size(), 3);
     EXPECT_FALSE(intTable->empty());
     for(int i = 1; i <= 3; i++){
