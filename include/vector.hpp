@@ -56,7 +56,7 @@ class Vector
             return vec[size_-1];
         }
 
-        T* data()
+        Vector<T>* data()
         {
             return this;
         }
@@ -64,20 +64,20 @@ class Vector
 
         void push_back(T& value)
         {
+            if (size_ == capacity_)
+                resize(capacity_*2);
+
             vec[size_] = value;
             ++size_;
-
-            if ((float)size_ / capacity_ > increase_size_bound_)
-                resize(capacity_*2);
         }
 
         void push_back(T&& value)
         {
+            if (size_ == capacity_)
+                resize(capacity_*2);
+
             vec[size_] = std::move(value);
             ++size_;
-
-            if ((float)size_ / capacity_ > increase_size_bound_)
-                resize(capacity_*2);
         }
 
         void pop_back() noexcept
@@ -100,7 +100,7 @@ class Vector
         {
             if (size_+1 >= capacity_)
                 resize(capacity_*2);
-            for (int i{size_}; i > idx; --i)
+            for (size_t i{size_}; i > idx; --i)
                 vec[i] = std::move(vec[i-1]); 
 
             vec[idx] = val;
@@ -135,6 +135,7 @@ class Vector
         void resize(size_t new_capacity_)
         {
             capacity_ = new_capacity_;
+            size_ = std::min(size_, capacity_);
             T* new_vec = new T[capacity_];
 
             for (int i{}; i<size_; ++i)
@@ -150,6 +151,6 @@ class Vector
         T* vec{ nullptr };
         size_t size_{ };
         size_t capacity_{ 8 };
-        static constexpr float increase_size_bound_{ 0.8 };
+        //static constexpr float increase_size_bound_{ 0.8 };
         static constexpr float decrease_size_bound_{ 0.2 };
 };
