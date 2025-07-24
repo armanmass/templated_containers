@@ -4,11 +4,10 @@
 #include <functional>
 #include <concepts>
 
-using namespace std;
-
 template<typename T>
-concept Hashable = requires(T x) {
-    { hash<T>{}(x) } -> std::convertible_to<size_t>;
+concept Hashable = requires(T x) 
+{
+    { std::hash<T>{}(x) } -> std::convertible_to<size_t>;
 };
 
 template<typename T>
@@ -16,22 +15,27 @@ concept Valuable = std::movable<T>;
 
 
 template<Hashable KeyType, Valuable ValueType, int SIZE = 10>
-class HashTable {
+class HashTable 
+{
     public:
-        void insert(const KeyType& _key, const ValueType& _val){
+        void insert(const KeyType& _key, const ValueType& _val)
+        {
             int group = hashFunction(_key);
             bool collision = false;
 
-            for(auto& kv_pair : hashTable[group]){
-                if(_key == kv_pair.first){
+            for(auto& kv_pair : hashTable[group])
+            {
+                if(_key == kv_pair.first)
+                {
                     kv_pair.second = _val;
-                    // cout << "ERR: Entry with key " << _key << " overwritten." << endl;
+                    // std::cout << "ERR: Entry with key " << _key << " overwritten." << std::endl;
                     collision = true;
                     break;
                 }
             }
             
-            if(!collision){
+            if(!collision)
+            {
                 hashTable[group].push_back({_key,_val});
                 _size++;
             }
@@ -39,30 +43,34 @@ class HashTable {
             return;
         }
 
-        void remove(const KeyType& _key){
+        void remove(const KeyType& _key)
+        {
             int group = hashFunction(_key);
-            bool removed = true;
+            bool removed = false;
             auto it = hashTable[group].begin();
 
-            for(; it != hashTable[group].end(); it++){
-                if(_key == it->first){
+            for(; it != hashTable[group].end(); it++)
+            {
+                if(_key == it->first)
+                {
                     hashTable[group].erase(it);
                     removed = true;
-                    _size--;
+                    --_size;
                     break;
                 }
             }
-            if(!removed){
+
+            if(!removed)
                 throw std::out_of_range("Key not found in HashTable.");
-            }
-            return;           
         }
 
-        ValueType get(const KeyType& _key){
+        ValueType get(const KeyType& _key)
+        {
             int group = hashFunction(_key);
             auto it = hashTable[group].begin();
 
-            for(; it != hashTable[group].end(); it++){
+            for(; it != hashTable[group].end(); it++)
+            {
                 if(_key == it->first)
                     return it->second;
             }
@@ -70,11 +78,13 @@ class HashTable {
             throw std::out_of_range("Key not found in HashTable.");
         }
 
-        bool contains(const KeyType& _key){
+        bool contains(const KeyType& _key)
+        {
             int group = hashFunction(_key);
             auto it = hashTable[group].begin();
 
-            for(; it != hashTable[group].end(); it++){
+            for(; it != hashTable[group].end(); it++)
+            {
                 if(_key == it->first)
                     return true;
             }
@@ -83,20 +93,22 @@ class HashTable {
         }
         
 
-        void printTable(){
-            if(empty()){
-                cout << "Table is empty." << endl;
+        void printTable()
+        {
+            if(empty())
+            {
+                std::cout << "Table is empty." << std::endl;
                 return;
             }
 
-            cout << "Printing table: " << endl;
-            for(auto& lst : hashTable){
-                for(auto& kv : lst){
-                    cout << "{ " << kv.first << " : " << kv.second << " }" << endl;
+            std::cout << "Printing table: " << std::endl;
+            for(auto& lst : hashTable)
+            {
+                for(auto& kv : lst)
+                {
+                    std::cout << "{ " << kv.first << " : " << kv.second << " }" << std::endl;
                 }
             }
-
-            return;
         }
 
 
@@ -106,10 +118,11 @@ class HashTable {
 
     private:
         static const int hashGroups = SIZE;
-        list<pair<KeyType,ValueType>> hashTable[hashGroups];
+        std::list<std::pair<KeyType,ValueType>> hashTable[hashGroups];
         int _size = 0;
 
-        int hashFunction(const KeyType& _key){
-            return hash<KeyType>{}(_key) % hashGroups;
+        int hashFunction(const KeyType& _key)
+        {
+            return std::hash<KeyType>{}(_key) % hashGroups;
         }
 };
