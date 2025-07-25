@@ -10,30 +10,30 @@ private:
     struct Element;
     struct Block;
 
+    // allocator for type T objects inside elements inside blocks
     using AllocTraits = std::allocator_traits<Allocator>;
+
+    // allocator for blocks
     using BlockAllocator = typename AllocTraits::template rebind_alloc<Block>;
     using BlockAllocTraits = std::allocator_traits<BlockAllocator>;
+
+    //allocator for elements inside blocks
     using ElementAllocator = typename AllocTraits::template rebind_alloc<Element>;
     using ElementAllocTraits = std::allocator_traits<ElementAllocator>;
 
+    // elements encapsulate data
     struct Element
     {
         enum class State { Active, Erased };
 
-        State state_;
-        size_t skip;
+        State state_{ State::Erased };
+        size_t skip{ };
 
         union
         {
             T data;
-            Element* next_free_;
+            Element* next_free_{ nullptr };
         };
-
-        Element()
-            : state_(State::Erased),
-              skip(0),
-              next_free_(nullptr)
-        { }
     };
 
     struct Block
@@ -97,6 +97,7 @@ public:
             return current_block_->elements_[idx_in_block_].data;
         }
 
+        // TODO: forwarding
         base_iterator& operator++();
         base_iterator  operator++(int) const
         {
