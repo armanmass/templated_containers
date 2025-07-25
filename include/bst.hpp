@@ -1,14 +1,9 @@
-#include <iostream>
-#include <utility>
-#include <functional>
-#include <concepts>
-
 template<typename T>
 struct Node 
 {
     T value;
-    Node* left = nullptr;
-    Node* right = nullptr;
+    Node* left{ nullptr };
+    Node* right{ nullptr };
 
     Node(const T& val) 
         : value(val) 
@@ -88,8 +83,3 @@ class BST
         int size_ = 0;
         Node<T>* root = nullptr;
 };
-
-int main()
-{
-    return 0;
-}
