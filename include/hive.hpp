@@ -9,8 +9,9 @@ class hive
 private:
     struct Element;
     struct Block;
+    struct BlockDeleter;
 
-    // allocator for type T objects inside elements inside blocks
+    // allocator for T objects inside elements inside blocks
     using AllocTraits = std::allocator_traits<Allocator>;
 
     // allocator for blocks
@@ -38,29 +39,31 @@ private:
 
     struct Block
     {
-        size_t capacity_;
-        Element* elements_;
+        size_t   capacity_{ };
+        Element* elements_{ nullptr };
 
-        Block* next{ nullptr };
+        std::unique_ptr<Block, BlockDeleter> next{ nullptr };
         Block* prev{ nullptr };
 
-        size_t active_{ };
-        size_t high_water_mark_{ };
+        size_t active_count_{ };
+        size_t highest_untouched_{ };
     };
 
+    // delete each elemnt inside the block then the block
     struct BlockDeleter
     {
-        BlockAllocator alloc_;
+        BlockAllocator alloc_{ };
 
-        void operator()(Block* b) const
+        void operator()(Block* block) const
         {
-            if (b == nullptr) return;
+            if (block == nullptr) return;
             ElementAllocator element_alloc_(alloc_);
-            ElementAllocTraits::deallocate(element_alloc_, b->elements_, b->capacity_);
-            BlockAllocTraits::deallocate(alloc_, b,1);
+            ElementAllocTraits::deallocate(element_alloc_, block->elements_, block->capacity_);
+            BlockAllocTraits::deallocate(alloc_, block,1);
         }
     };
 
+    /* --- Base Iterator Class --- */
 public:
     using value_type      = T;
     using allocator_type  = Allocator;
@@ -68,8 +71,6 @@ public:
     using const_reference = const T&;
     using pointer         = typename AllocTraits::pointer;
     using const_pointer   = typename AllocTraits::const_pointer;
-
-    /* Base Iterator Class */
 
     template<bool Const>
     class base_iterator
@@ -126,5 +127,44 @@ public:
     using iterator       = base_iterator<false>;
     using const_iterator = base_iterator<true>;
 
+
+    /* --- Member Variables --- */
 private:
+    using BlockPtr = std::unique_ptr<Block, BlockDeleter>;
+    BlockPtr first_block_{ nullptr };
+    Block*   last_block_{ nullptr };
+
+    Element*  free_list_head_{ nullptr };
+    Allocator allocator_{ };
+
+    size_t size_{ };
+    size_t capacity_{ };
+    size_t init_block_capacity_{ 8 };
+
+
+    /* --- Hive Special Member Functions --- */
+public:
+    explicit hive(const Allocator& alloc = Allocator())
+        : allocator_(alloc)
+    { }
+
+    ~hive()
+    {
+        clear();
+    }
+
+    void clear() noexcept
+    {
+        if (first_block_ == nullptr) return;
+
+        Block* curr_block = first_block_;
+        while (curr_block != nullptr)
+        {
+
+            curr_block = curr_block->next;
+        }
+
+        first_block_.reset(); // next pointer is unique so recursive destruct? (i hope)
+    }
+
 };
