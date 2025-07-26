@@ -148,10 +148,7 @@ public:
         : allocator_(alloc)
     { }
 
-    ~hive()
-    {
-        clear();
-    }
+    ~hive() { clear(); }
 
     void clear() noexcept
     {
@@ -160,11 +157,61 @@ public:
         Block* curr_block = first_block_;
         while (curr_block != nullptr)
         {
+            for (int i{}; i<curr_block->highest_untouched_; ++i)
+            {
+                if (curr_block->elements_[i].state_ == Element::State::Active)
+                    AllocTraits::destroy(allocator_, curr_block->elements_[i].data);
+
+            }
 
             curr_block = curr_block->next;
         }
 
         first_block_.reset(); // next pointer is unique so recursive destruct? (i hope)
+        last_block_ = nullptr;
+        size_ = 0;
+        capacity_ = 0;
     }
 
+    void swap(hive& other) noexcept
+    {
+        using std::swap;
+
+        swap(first_block_, other.first_block_);
+        swap(last_block_ , other.last_block_);
+
+        swap(free_list_head_, other.free_list_head_);
+        swap(allocator_, other.allocator_);
+
+        swap(size_, other.size_);
+        swap(capacity_, other.capacity_);
+    }
+
+    [[nodiscard]] bool is_empty() const noexcept { return size_ == 0; }
+    [[nodiscard]] size_t size() const { return size_; }
+    [[nodiscard]] size_t capacity() const { return capacity_; }
+
+    [[nodiscard]] iterator begin() noexcept;
+    [[nodiscard]] const_iterator begin() const noexcept;
+
+    [[nodiscard]] iterator end() noexcept;
+    [[nodiscard]] const_iterator end() const noexcept;
+    
+    template<typename... Args>
+    iterator emplace(Args&&... args);
+
+    iterator erase(const_iterator it);
+
+private:
+    void add_block();
+    iterator prev_active(Block* block, size_t idx);
+
 };
+
+    /* --- Thick Functions --- */
+
+template<typename T, typename Allocator>
+void hive<T, Allocator>::add_block()
+{
+
+}
