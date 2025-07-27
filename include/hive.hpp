@@ -81,7 +81,7 @@ public:
         using iterator_concept = std::forward_iterator_tag;
         using difference_type  = std::ptrdiff_t;
         using pointer          = std::conditional_t<Const, const T*, T*>;
-        using reference        = std::conditional_t<Const, const T*, T*>;
+        using reference        = std::conditional_t<Const, const T&, T&>;
 
         base_iterator() = default;
         operator base_iterator<true>() const
@@ -195,8 +195,8 @@ public:
     [[nodiscard]] iterator begin() noexcept;
     [[nodiscard]] const_iterator begin() const noexcept;
 
-    [[nodiscard]] iterator end() noexcept;
-    [[nodiscard]] const_iterator end() const noexcept;
+    [[nodiscard]] iterator end() noexcept { return iterator(nullptr, 0); }
+    [[nodiscard]] const_iterator end() const noexcept { return const_iterator(nullptr, 0); }
     
     template<typename... Args>
     iterator emplace(Args&&... args);
@@ -235,4 +235,48 @@ void hive<T, Allocator>::add_block()
         last_block_->next = std::move(new_block);
         last_block_ = last_block_->next.get();
     }
+}
+
+template<typename T, typename Allocator>
+typename hive<T, Allocator>::iterator 
+hive<T,Allocator>::begin() noexcept
+{    
+    if (last_block_ == nullptr || is_empty()) 
+        return end();
+
+    Block* curr_block = first_block_.get();
+
+    while (curr_block != nullptr)
+    {
+        for (size_t idx{}; idx<curr_block->highest_untouched_; ++idx)
+        {
+            if (curr_block->elements_[idx].state_ == Element::State::Active)
+                return iterator(curr_block, idx);
+        }
+        curr_block = curr_block->next;
+    }
+
+    return end();
+}
+
+template<typename T, typename Allocator>
+typename hive<T, Allocator>::const_iterator 
+hive<T,Allocator>::begin() const noexcept
+{    
+    if (last_block_ == nullptr || is_empty()) 
+        return end();
+
+    Block* curr_block = first_block_.get();
+
+    while (curr_block != nullptr)
+    {
+        for (size_t idx{}; idx<curr_block->highest_untouched_; ++idx)
+        {
+            if (curr_block->elements_[idx].state_ == Element::State::Active)
+                return const_iterator(curr_block, idx);
+        }
+        curr_block = curr_block->next;
+    }
+
+    return end();
 }
