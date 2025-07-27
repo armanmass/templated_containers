@@ -2,8 +2,6 @@
 #include <type_traits>
 #include <memory>
 
-using namespace std;
-
 template <typename T, typename Allocator = std::allocator<T>>
 class hive
 {
@@ -116,7 +114,7 @@ public:
             return *this;
         }
 
-        base_iterator operator++(int) const
+        base_iterator operator++(int)
         {
             base_iterator temp = *this;
             ++(*this);
@@ -217,12 +215,12 @@ public:
     template<typename... Args>
     iterator emplace(Args&&... args);
 
-    iterator erase(const_iterator& itr);
+    iterator erase(iterator itr);
 
 private:
     void add_block();
     void update_skipfield_on_emplace(Block* block, size_t idx);
-    iterator update_skipfield_on_erase(Block* block, size_t idx);
+    void update_skipfield_on_erase(Block* block, size_t idx);
 
 };
 
@@ -354,13 +352,13 @@ void hive<T, Allocator>::update_skipfield_on_emplace(Block* block, size_t idx)
         --old_skip;
         if (idx+1 < block->capacity_) [[likely]]
             block->elements_[idx+1].skip = old_skip;
-        block->elements_[idx+old_skip] = old_skip;
+        block->elements_[idx+old_skip].skip = old_skip;
    }
 }
 
 template<typename T, typename Allocator>
 typename hive<T, Allocator>::iterator
-hive<T, Allocator>::erase(const_iterator& itr)
+hive<T, Allocator>::erase(iterator itr)
 {
     if (itr.current_block_ == nullptr || 
         itr.current_block_.elements_[itr.idx_in_block_].skip > 0)
@@ -374,21 +372,22 @@ hive<T, Allocator>::erase(const_iterator& itr)
 
     AllocTraits::destroy(allocator_, &element_to_erase.data);
 
-    Element*  new_free_list_head = update_skipfield_on_erase(block, idx);
+    element_to_erase.next_free_ = free_list_head_;
+    free_list_head_ = element_to_erase;
+
+    update_skipfield_on_erase(block, idx);
 
     --size_;
     --block->active_count_;
 
     // consider shrinking highest_untouched if fully connects
 
-    iterator next_itr = itr;
-    ++next_itr;
-    return next_itr;
+    ++itr;
+    return itr;
 }
 
 template<typename T, typename Allocator>
-typename hive<T, Allocator>::iterator
-hive<T, Allocator>::update_skipfield_on_erase(Block* block, size_t idx)
+void hive<T, Allocator>::update_skipfield_on_erase(Block* block, size_t idx)
 {
     size_t left_gap{ };
     size_t right_gap{ };
@@ -405,8 +404,6 @@ hive<T, Allocator>::update_skipfield_on_erase(Block* block, size_t idx)
     //update idx+right_gap-1 to left_gap+right_gap+1
     const size_t new_gap = left_gap + 1 + right_gap;
 
-    block->elements_[idx-left_gap+1] = new_gap;
-    block->elements_[idx+right_gap-1] = new_gap;
-
-
+    block->elements_[idx-left_gap].skip = new_gap;
+    block->elements_[idx+right_gap].skip = new_gap;
 }
