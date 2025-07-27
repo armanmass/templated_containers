@@ -329,12 +329,17 @@ hive<T, Allocator>::emplace(Args&&... args)
         free_parent = last_block_;
         free_idx = last_block_->highest_untouched_;
         free_element = free_parent->elements_[free_idx];
-        ++last_block_->highest_untouched_;
+        ++free_parent->highest_untouched_;
     }
-    ++last_block_->active_count_;
 
     //construct element within block
     AllocTraits::construct(allocator_, &free_element->data, std::forward<Args>(args)...);
+
+    ++free_parent->active_count_;
+    free_element->state_ = Element::State::Active;
+    ++size_;
+
+    update_skipfield(free_parent, free_idx);
 
     return iterator(free_parent, free_idx);
 }
