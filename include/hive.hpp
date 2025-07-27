@@ -1,8 +1,8 @@
 #include <cstddef>
 #include <type_traits>
-
 #include <memory>
-#include <iterator>
+
+using namespace std;
 
 template <typename T, typename Allocator = std::allocator<T>>
 class hive
@@ -155,7 +155,8 @@ private:
 
     size_t size_{ };
     size_t capacity_{ };
-    size_t next_block_capacity_{ 8 };
+    static constexpr size_t INITIAL_CAPACITY{ 8 };
+    size_t next_block_capacity_{ INITIAL_CAPACITY };
 
 
     /* --- Hive Special Member Functions --- */
@@ -216,12 +217,12 @@ public:
     template<typename... Args>
     iterator emplace(Args&&... args);
 
-    iterator erase(const_iterator& it);
+    iterator erase(const_iterator& itr);
 
 private:
     void add_block();
     void update_skipfield_on_emplace(Block* block, size_t idx);
-    void update_skipfield_on_erase(Block* block, size_t idx);
+    iterator update_skipfield_on_erase(Block* block, size_t idx);
 
 };
 
@@ -348,17 +349,64 @@ void hive<T, Allocator>::update_skipfield_on_emplace(Block* block, size_t idx)
    size_t old_skip = new_element.skip;
    new_element.skip = 0;
 
-   if (old_skip > 1 && idx+1 < block->capacity_) [[likely]]
+   if (old_skip > 1) [[likely]]
    {
-        block->capacity_
+        --old_skip;
+        if (idx+1 < block->capacity_) [[likely]]
+            block->elements_[idx+1].skip = old_skip;
+        block->elements_[idx+old_skip] = old_skip;
    }
 }
 
 template<typename T, typename Allocator>
 typename hive<T, Allocator>::iterator
-hive<T, Allocator>::erase(const_iterator& it)
+hive<T, Allocator>::erase(const_iterator& itr)
 {
-    if (it.current_block_.elements_[it.idx_in_block_].skip > 0)
-        return iterator(nullptr, 0);
-    return iterator(nullptr, 0);
+    if (itr.current_block_ == nullptr || 
+        itr.current_block_.elements_[itr.idx_in_block_].skip > 0)
+    {
+        return end();
+    }
+
+    auto block = const_cast<Block*>(itr.current_block_);
+    const size_t idx = itr.idx_in_block_;
+    Element& element_to_erase = block->elements_[idx];
+
+    AllocTraits::destroy(allocator_, &element_to_erase.data);
+
+    Element*  new_free_list_head = update_skipfield_on_erase(block, idx);
+
+    --size_;
+    --block->active_count_;
+
+    // consider shrinking highest_untouched if fully connects
+
+    iterator next_itr = itr;
+    ++next_itr;
+    return next_itr;
+}
+
+template<typename T, typename Allocator>
+typename hive<T, Allocator>::iterator
+hive<T, Allocator>::update_skipfield_on_erase(Block* block, size_t idx)
+{
+    size_t left_gap{ };
+    size_t right_gap{ };
+
+    // if next block is active (skip == 0) then no change else coalesce
+    if (idx+1 < block->highest_untouched_)
+        right_gap = block->elements_[idx+1].skip;
+
+    // if empty element to our left coalesce with it as well
+    if (idx>0)
+        left_gap = block->elements_[idx-1].skip;
+
+    //update idx-left_gap+1 to left_gap+right_gap+1
+    //update idx+right_gap-1 to left_gap+right_gap+1
+    const size_t new_gap = left_gap + 1 + right_gap;
+
+    block->elements_[idx-left_gap+1] = new_gap;
+    block->elements_[idx+right_gap-1] = new_gap;
+
+
 }
