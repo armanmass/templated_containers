@@ -1,8 +1,8 @@
 #include <cstddef>
-#include <iterator>
-#include <memory>
-#include <stdexcept>
 #include <type_traits>
+
+#include <memory>
+#include <iterator>
 
 template <typename T, typename Allocator = std::allocator<T>>
 class hive
@@ -26,14 +26,12 @@ private:
     // Elements encapsulate data
     struct Element
     {
-        enum class State { Active, Erased };
-
-        State state_{ State::Erased };
-        size_t skip{ };
+        size_t skip{ 1 };
 
         Block* parent{ nullptr };
-
-        // TODO: not going to work need to re approach
+        
+        // TODO: maybe replace not sure if it will work
+        // next free is for the free list, either holding data or on free list if erased
         union
         {
             T data;
@@ -70,22 +68,13 @@ private:
 
     /* --- Base Iterator Class --- */
 public:
-    using value_type      = T;
-    using allocator_type  = Allocator;
-    using reference       = T&;
-    using const_reference = const T&;
-    using pointer         = typename AllocTraits::pointer;
-    using const_pointer   = typename AllocTraits::const_pointer;
 
     template<bool Const>
     class base_iterator
     {
     public:
-        using value_type       = T;
-        using iterator_concept = std::forward_iterator_tag;
-        using difference_type  = std::ptrdiff_t;
-        using pointer          = std::conditional_t<Const, const T*, T*>;
-        using reference        = std::conditional_t<Const, const T&, T&>;
+        using pointer   = std::conditional_t<Const, const T*, T*>;
+        using reference = std::conditional_t<Const, const T&, T&>;
 
         base_iterator() = default;
         operator base_iterator<true>() const
@@ -95,12 +84,12 @@ public:
 
         [[nodiscard]] reference operator*() const
         {
-            return &this->current_block_->elements_[idx_in_block_].data;
+            return this->current_block_->elements_[idx_in_block_].data;
         }
 
         [[nodiscard]] pointer operator->() const
         {
-            return &this->current_block_->elements_[idx_in_block_].data;
+            return this->current_block_->elements_[idx_in_block_].data;
         }
 
         // Recursive crash occurs in clanged when not using 'this'
@@ -116,7 +105,7 @@ public:
             {
                 while (this->idx_in_block_ < this->current_block_->highest_untouched_)
                 {
-                    if (this->current_block_->elements_[idx_in_block_].state_ == Element::State::Active)
+                    if (this->current_block_->elements_[idx_in_block_].skip == 0)
                         return *this;
 
                     this->idx_in_block_ += this->current_block_->elements_[idx_in_block_].skip;
@@ -181,17 +170,17 @@ public:
     {
         if (first_block_ == nullptr) return;
 
-        Block* curr_block = first_block_;
+        Block* curr_block = first_block_.get();
         while (curr_block != nullptr)
         {
             for (int i{}; i<curr_block->highest_untouched_; ++i)
             {
-                if (curr_block->elements_[i].state_ == Element::State::Active)
+                if (curr_block->elements_[i].skip == 0)
                     AllocTraits::destroy(allocator_, &curr_block->elements_[i].data);
 
             }
 
-            curr_block = curr_block->next;
+            curr_block = curr_block->next.get();
         }
 
         first_block_.reset(); // next pointer is unique so recursive destruct? (i hope)
@@ -227,10 +216,12 @@ public:
     template<typename... Args>
     iterator emplace(Args&&... args);
 
-    iterator erase(const_iterator it);
+    iterator erase(const_iterator& it);
 
 private:
     void add_block();
+    void update_skipfield_on_emplace(Block* block, size_t idx);
+    void update_skipfield_on_erase(Block* block, size_t idx);
 
 };
 
@@ -246,7 +237,6 @@ void hive<T, Allocator>::add_block()
     new_block->elements_ = ElementAllocTraits::allocate(elem_alloc, next_block_capacity_);
 
     capacity_ += next_block_capacity_;
-    next_block_capacity_ *= 2;
 
     if (last_block_ == nullptr) [[unlikely]]
     {
@@ -258,6 +248,14 @@ void hive<T, Allocator>::add_block()
         last_block_->next = std::move(new_block);
         last_block_ = last_block_->next.get();
     }
+
+    for (int i{}; i<next_block_capacity_; ++i)
+        new_block->elements_[i].parent = last_block_;
+
+    new_block->elements_[0].skip = next_block_capacity_;
+    new_block->elements_[next_block_capacity_-1].skip = next_block_capacity_;
+
+    next_block_capacity_ *= 2;
 }
 
 template<typename T, typename Allocator>
@@ -273,17 +271,17 @@ hive<T,Allocator>::begin() noexcept
     {
         for (size_t idx{}; idx<curr_block->highest_untouched_; ++idx)
         {
-            if (curr_block->elements_[idx].state_ == Element::State::Active)
+            if (curr_block->elements_[idx].skip == 0)
                 return iterator(curr_block, idx);
         }
-        curr_block = curr_block->next;
+        curr_block = curr_block->next.get();
     }
 
     return end();
 }
 
 template<typename T, typename Allocator>
-typename hive<T, Allocator>::const_iterator 
+typename hive<T, Allocator>::const_iterator
 hive<T,Allocator>::begin() const noexcept
 {    
     if (last_block_ == nullptr || is_empty()) 
@@ -295,10 +293,10 @@ hive<T,Allocator>::begin() const noexcept
     {
         for (size_t idx{}; idx<curr_block->highest_untouched_; ++idx)
         {
-            if (curr_block->elements_[idx].state_ == Element::State::Active)
+            if (curr_block->elements_[idx].skip == 0)
                 return const_iterator(curr_block, idx);
         }
-        curr_block = curr_block->next;
+        curr_block = curr_block->next.get();
     }
 
     return end();
@@ -317,7 +315,6 @@ hive<T, Allocator>::emplace(Args&&... args)
     {
         free_element = free_list_head_;
         free_list_head_ = free_list_head_->next_free_;
-        free_element->next_free_ = nullptr;
 
         free_parent = free_element->parent;
         free_idx = free_element - free_parent->elements_;
@@ -327,8 +324,9 @@ hive<T, Allocator>::emplace(Args&&... args)
         if (last_block_ == nullptr || last_block_->active_count_ == last_block_->capacity_)
             add_block();
         free_parent = last_block_;
-        free_idx = last_block_->highest_untouched_;
-        free_element = free_parent->elements_[free_idx];
+
+        free_idx = free_parent->highest_untouched_;
+        free_element = &free_parent->elements_[free_idx];
         ++free_parent->highest_untouched_;
     }
 
@@ -336,10 +334,31 @@ hive<T, Allocator>::emplace(Args&&... args)
     AllocTraits::construct(allocator_, &free_element->data, std::forward<Args>(args)...);
 
     ++free_parent->active_count_;
-    free_element->state_ = Element::State::Active;
     ++size_;
 
-    update_skipfield(free_parent, free_idx);
+    update_skipfield_on_emplace(free_parent, free_idx);
 
     return iterator(free_parent, free_idx);
+}
+
+template<typename T, typename Allocator>
+void hive<T, Allocator>::update_skipfield_on_emplace(Block* block, size_t idx)
+{
+   Element& new_element = block->elements_[idx]; 
+   size_t old_skip = new_element.skip;
+   new_element.skip = 0;
+
+   if (old_skip > 1 && idx+1 < block->capacity_) [[likely]]
+   {
+        block->capacity_
+   }
+}
+
+template<typename T, typename Allocator>
+typename hive<T, Allocator>::iterator
+hive<T, Allocator>::erase(const_iterator& it)
+{
+    if (it.current_block_.elements_[it.idx_in_block_].skip > 0)
+        return iterator(nullptr, 0);
+    return iterator(nullptr, 0);
 }
