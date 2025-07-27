@@ -37,6 +37,7 @@ private:
         };
     };
 
+    // blocks encapsulate elements
     struct Block
     {
         size_t   capacity_{ };
@@ -139,7 +140,7 @@ private:
 
     size_t size_{ };
     size_t capacity_{ };
-    size_t init_block_capacity_{ 8 };
+    size_t next_block_capacity_{ 8 };
 
 
     /* --- Hive Special Member Functions --- */
@@ -204,6 +205,8 @@ public:
 
 private:
     void add_block();
+    // what if prev_active called on idx 0 of first block?
+    // iterator containing nullptr? exception?
     iterator prev_active(Block* block, size_t idx);
 
 };
@@ -213,5 +216,23 @@ private:
 template<typename T, typename Allocator>
 void hive<T, Allocator>::add_block()
 {
+    BlockAllocator block_alloc{ allocator_ };
+    ElementAllocator elem_alloc{ allocator_ };
 
+    BlockPtr new_block{ BlockAllocTraits::allocate(block_alloc, 1), BlockDeleter{ block_alloc }};
+    new_block->elements_ = ElementAllocTraits::allocate(elem_alloc, next_block_capacity_);
+
+    capacity_ += next_block_capacity_;
+    next_block_capacity_ *= 2;
+
+    if (last_block_ == nullptr) [[unlikely]]
+    {
+        first_block_ = std::move(new_block);
+        last_block_ = first_block_.get();
+    }
+    else
+    {
+        last_block_->next = std::move(new_block);
+        last_block_ = last_block_->next.get();
+    }
 }
