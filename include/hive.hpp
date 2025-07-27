@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <iterator>
 #include <memory>
+#include <stdexcept>
 #include <type_traits>
 
 template <typename T, typename Allocator = std::allocator<T>>
@@ -11,18 +12,18 @@ private:
     struct Block;
     struct BlockDeleter;
 
-    // allocator for T objects inside elements inside blocks
+    // Allocator for T objects inside elements inside blocks
     using AllocTraits = std::allocator_traits<Allocator>;
 
-    // allocator for blocks
+    // Allocator for blocks
     using BlockAllocator = typename AllocTraits::template rebind_alloc<Block>;
     using BlockAllocTraits = std::allocator_traits<BlockAllocator>;
 
-    //allocator for elements inside blocks
+    //Allocator for elements inside blocks
     using ElementAllocator = typename AllocTraits::template rebind_alloc<Element>;
     using ElementAllocTraits = std::allocator_traits<ElementAllocator>;
 
-    // elements encapsulate data
+    // Elements encapsulate data
     struct Element
     {
         enum class State { Active, Erased };
@@ -30,6 +31,9 @@ private:
         State state_{ State::Erased };
         size_t skip{ };
 
+        Block* parent{ nullptr };
+
+        // TODO: not going to work need to re approach
         union
         {
             T data;
@@ -37,7 +41,7 @@ private:
         };
     };
 
-    // blocks encapsulate elements
+    // Blocks encapsulate elements
     struct Block
     {
         size_t   capacity_{ };
@@ -50,7 +54,7 @@ private:
         size_t highest_untouched_{ };
     };
 
-    // delete each elemnt inside the block then the block
+    // Delete each element inside the block then the block
     struct BlockDeleter
     {
         BlockAllocator alloc_{ };
@@ -89,26 +93,48 @@ public:
             return base_iterator<true>(current_block_, idx_in_block_);
         }
 
-        reference operator*() const
+        [[nodiscard]] reference operator*() const
         {
-            return current_block_->elements_[idx_in_block_].data;
+            return &this->current_block_->elements_[idx_in_block_].data;
         }
 
-        pointer operator->() const
+        [[nodiscard]] pointer operator->() const
         {
-            return current_block_->elements_[idx_in_block_].data;
+            return &this->current_block_->elements_[idx_in_block_].data;
         }
 
-        // TODO: forwarding
-        base_iterator& operator++();
-        base_iterator  operator++(int) const
+        // Recursive crash occurs in clanged when not using 'this'
+        // Not sure why (maybe due to const template resolution?)
+        base_iterator& operator++()
+        {
+            if (this->current_block_ == nullptr) 
+                return *this;
+
+            ++this->idx_in_block_;
+
+            while (this->current_block_ != nullptr)
+            {
+                while (this->idx_in_block_ < this->current_block_->highest_untouched_)
+                {
+                    if (this->current_block_->elements_[idx_in_block_].state_ == Element::State::Active)
+                        return *this;
+
+                    this->idx_in_block_ += this->current_block_->elements_[idx_in_block_].skip;
+                }
+                this->current_block_ = this->current_block_->next.get();
+                this->idx_in_block_ = 0;
+            }
+            return *this;
+        }
+
+        base_iterator operator++(int) const
         {
             base_iterator temp = *this;
             ++(*this);
             return temp;
         }
 
-        bool operator==(const base_iterator& other) const
+        [[nodiscard]] bool operator==(const base_iterator& other) const
         {
             return current_block_ == other.current_block_ && idx_in_block_ == other.idx_in_block_;
         }
@@ -161,7 +187,7 @@ public:
             for (int i{}; i<curr_block->highest_untouched_; ++i)
             {
                 if (curr_block->elements_[i].state_ == Element::State::Active)
-                    AllocTraits::destroy(allocator_, curr_block->elements_[i].data);
+                    AllocTraits::destroy(allocator_, &curr_block->elements_[i].data);
 
             }
 
@@ -205,9 +231,6 @@ public:
 
 private:
     void add_block();
-    // what if prev_active called on idx 0 of first block?
-    // iterator containing nullptr? exception?
-    iterator prev_active(Block* block, size_t idx);
 
 };
 
@@ -279,4 +302,39 @@ hive<T,Allocator>::begin() const noexcept
     }
 
     return end();
+}
+
+template<typename T, typename Allocator>
+template<typename... Args>
+typename hive<T, Allocator>::iterator 
+hive<T, Allocator>::emplace(Args&&... args)
+{
+    Block* free_parent{ nullptr };
+    Element* free_element{ nullptr };
+    size_t free_idx{ };
+
+    if (free_list_head_ != nullptr)
+    {
+        free_element = free_list_head_;
+        free_list_head_ = free_list_head_->next_free_;
+        free_element->next_free_ = nullptr;
+
+        free_parent = free_element->parent;
+        free_idx = free_element - free_parent->elements_;
+    }
+    else
+    {
+        if (last_block_ == nullptr || last_block_->active_count_ == last_block_->capacity_)
+            add_block();
+        free_parent = last_block_;
+        free_idx = last_block_->highest_untouched_;
+        free_element = free_parent->elements_[free_idx];
+        ++last_block_->highest_untouched_;
+    }
+    ++last_block_->active_count_;
+
+    //construct element within block
+    AllocTraits::construct(allocator_, &free_element->data, std::forward<Args>(args)...);
+
+    return iterator(free_parent, free_idx);
 }
