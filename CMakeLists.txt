@@ -14,6 +14,7 @@ add_executable(
     all_tests
     tests/testvec.cpp
     tests/testht.cpp
+    tests/testhive.cpp
 )
 
 target_include_directories(

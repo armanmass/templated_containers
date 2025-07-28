@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <iostream>
 #include <type_traits>
 #include <memory>
 
@@ -28,13 +29,18 @@ private:
 
         Block* parent{ nullptr };
         
-        // TODO: maybe replace not sure if it will work
         // next free is for the free list, either holding data or on free list if erased
         union
         {
             T data;
             Element* next_free_{ nullptr };
         };
+
+        Element()
+            : next_free_(nullptr)
+        { }
+
+        ~Element() {}
     };
 
     // Blocks encapsulate elements
@@ -43,7 +49,7 @@ private:
         size_t   capacity_{ };
         Element* elements_{ nullptr };
 
-        std::unique_ptr<Block, BlockDeleter> next{ nullptr };
+        std::unique_ptr<Block, BlockDeleter> next;
         Block* prev{ nullptr };
 
         size_t active_count_{ };
@@ -53,14 +59,20 @@ private:
     // Delete each element inside the block then the block
     struct BlockDeleter
     {
-        BlockAllocator alloc_{ };
+        BlockAllocator block_alloc_;
 
-        void operator()(Block* block) const
+        explicit BlockDeleter(const BlockAllocator& balloc_ = BlockAllocator()) noexcept
+            : block_alloc_(balloc_)
+        { }
+
+        void operator()(Block* block)
         {
             if (block == nullptr) return;
-            ElementAllocator element_alloc_(alloc_);
+            ElementAllocator element_alloc_(block_alloc_);
             ElementAllocTraits::deallocate(element_alloc_, block->elements_, block->capacity_);
-            BlockAllocTraits::deallocate(alloc_, block,1);
+
+            BlockAllocTraits::destroy(block_alloc_, block);
+            BlockAllocTraits::deallocate(block_alloc_, block,1);
         }
     };
 
@@ -87,7 +99,7 @@ public:
 
         [[nodiscard]] pointer operator->() const
         {
-            return this->current_block_->elements_[idx_in_block_].data;
+            return &this->current_block_->elements_[idx_in_block_].data;
         }
 
         // Recursive crash occurs in clanged when not using 'this'
@@ -145,7 +157,7 @@ public:
     /* --- Member Variables --- */
 private:
     using BlockPtr = std::unique_ptr<Block, BlockDeleter>;
-    BlockPtr first_block_{ nullptr };
+    BlockPtr first_block_;
     Block*   last_block_{ nullptr };
 
     Element*  free_list_head_{ nullptr };
@@ -153,7 +165,7 @@ private:
 
     size_t size_{ };
     size_t capacity_{ };
-    static constexpr size_t INITIAL_CAPACITY{ 8 };
+    static constexpr size_t INITIAL_CAPACITY{ 4 };
     size_t next_block_capacity_{ INITIAL_CAPACITY };
 
 
@@ -172,11 +184,10 @@ public:
         Block* curr_block = first_block_.get();
         while (curr_block != nullptr)
         {
-            for (int i{}; i<curr_block->highest_untouched_; ++i)
+            for (size_t i{}; i<curr_block->highest_untouched_; ++i)
             {
                 if (curr_block->elements_[i].skip == 0)
                     AllocTraits::destroy(allocator_, &curr_block->elements_[i].data);
-
             }
 
             curr_block = curr_block->next.get();
@@ -203,14 +214,18 @@ public:
     }
 
     [[nodiscard]] bool is_empty() const noexcept { return size_ == 0; }
-    [[nodiscard]] size_t size() const { return size_; }
-    [[nodiscard]] size_t capacity() const { return capacity_; }
+    [[nodiscard]] size_t size() const noexcept { return size_; }
+    [[nodiscard]] size_t capacity() const noexcept { return capacity_; }
 
     [[nodiscard]] iterator begin() noexcept;
     [[nodiscard]] const_iterator begin() const noexcept;
 
     [[nodiscard]] iterator end() noexcept { return iterator(nullptr, 0); }
     [[nodiscard]] const_iterator end() const noexcept { return const_iterator(nullptr, 0); }
+
+    // TODO: implement insert
+    iterator insert(const T& obj);
+    iterator insert(T&& obj);
     
     template<typename... Args>
     iterator emplace(Args&&... args);
@@ -218,10 +233,13 @@ public:
     iterator erase(iterator itr);
 
 private:
+    // TODO; implement insert internal
+    template<typename U>
+    iterator insert_internal(U&& obj);
+
     void add_block();
     void update_skipfield_on_emplace(Block* block, size_t idx);
     void update_skipfield_on_erase(Block* block, size_t idx);
-
 };
 
     /* --- Thick Functions --- */
@@ -232,10 +250,18 @@ void hive<T, Allocator>::add_block()
     BlockAllocator block_alloc{ allocator_ };
     ElementAllocator elem_alloc{ allocator_ };
 
-    BlockPtr new_block{ BlockAllocTraits::allocate(block_alloc, 1), BlockDeleter{ block_alloc }};
+    Block* raw_block{ BlockAllocTraits::allocate(block_alloc, 1) };
+    BlockAllocTraits::construct(block_alloc, raw_block);
+
+
+    BlockPtr new_block{ raw_block, BlockDeleter{ block_alloc }};
+    new_block->capacity_ = next_block_capacity_;
     new_block->elements_ = ElementAllocTraits::allocate(elem_alloc, next_block_capacity_);
 
-    capacity_ += next_block_capacity_;
+    for (size_t i{}; i < new_block->capacity_; ++i)
+        ElementAllocTraits::construct(elem_alloc, &new_block->elements_[i]);
+
+    this->capacity_ += next_block_capacity_;
 
     if (last_block_ == nullptr) [[unlikely]]
     {
@@ -244,15 +270,16 @@ void hive<T, Allocator>::add_block()
     }
     else
     {
+        new_block->prev = last_block_;
         last_block_->next = std::move(new_block);
         last_block_ = last_block_->next.get();
     }
 
-    for (int i{}; i<next_block_capacity_; ++i)
-        new_block->elements_[i].parent = last_block_;
+    for (size_t i{}; i<next_block_capacity_; ++i)
+        last_block_->elements_[i].parent = last_block_;
 
-    new_block->elements_[0].skip = next_block_capacity_;
-    new_block->elements_[next_block_capacity_-1].skip = next_block_capacity_;
+    last_block_->elements_[0].skip = last_block_->capacity_;
+    last_block_->elements_[next_block_capacity_-1].skip = last_block_->capacity_;
 
     next_block_capacity_ *= 2;
 }
@@ -321,7 +348,10 @@ hive<T, Allocator>::emplace(Args&&... args)
     else
     {
         if (last_block_ == nullptr || last_block_->active_count_ == last_block_->capacity_)
+        {
             add_block();
+        }
+std::cout << "Num active before insert: " << last_block_->active_count_ << " Block capacity: " << last_block_->capacity_ << '\n';
         free_parent = last_block_;
 
         free_idx = free_parent->highest_untouched_;
@@ -336,7 +366,7 @@ hive<T, Allocator>::emplace(Args&&... args)
     ++size_;
 
     update_skipfield_on_emplace(free_parent, free_idx);
-
+std::cout << "Inserted " << free_element->data << " at idx: " << free_idx << '\n';
     return iterator(free_parent, free_idx);
 }
 
@@ -361,19 +391,19 @@ typename hive<T, Allocator>::iterator
 hive<T, Allocator>::erase(iterator itr)
 {
     if (itr.current_block_ == nullptr || 
-        itr.current_block_.elements_[itr.idx_in_block_].skip > 0)
+        itr.current_block_->elements_[itr.idx_in_block_].skip > 0)
     {
         return end();
     }
 
-    auto block = const_cast<Block*>(itr.current_block_);
+    auto block = itr.current_block_;
     const size_t idx = itr.idx_in_block_;
     Element& element_to_erase = block->elements_[idx];
 
     AllocTraits::destroy(allocator_, &element_to_erase.data);
 
     element_to_erase.next_free_ = free_list_head_;
-    free_list_head_ = element_to_erase;
+    free_list_head_ = &element_to_erase;
 
     update_skipfield_on_erase(block, idx);
 
