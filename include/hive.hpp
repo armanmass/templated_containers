@@ -195,6 +195,7 @@ public:
 
         first_block_.reset(); // next pointer is unique so recursive destruct? (i hope)
         last_block_ = nullptr;
+        free_list_head_ = nullptr;
         size_ = 0;
         capacity_ = 0;
     }
@@ -329,6 +330,28 @@ hive<T,Allocator>::begin() const noexcept
 }
 
 template<typename T, typename Allocator>
+template<typename U>
+typename hive<T, Allocator>::iterator 
+hive<T, Allocator>::insert_internal(U&& obj)
+{
+
+}
+
+template<typename T, typename Allocator>
+typename hive<T, Allocator>::iterator 
+hive<T, Allocator>::insert(const T& obj)
+{
+
+}
+
+template<typename T, typename Allocator>
+typename hive<T, Allocator>::iterator 
+hive<T, Allocator>::insert(T&& obj)
+{
+
+}
+
+template<typename T, typename Allocator>
 template<typename... Args>
 typename hive<T, Allocator>::iterator 
 hive<T, Allocator>::emplace(Args&&... args)
@@ -351,7 +374,7 @@ hive<T, Allocator>::emplace(Args&&... args)
         {
             add_block();
         }
-std::cout << "Num active before insert: " << last_block_->active_count_ << " Block capacity: " << last_block_->capacity_ << '\n';
+// std::cout << "Num active before insert: " << last_block_->active_count_ << " Block capacity: " << last_block_->capacity_ << '\n';
         free_parent = last_block_;
 
         free_idx = free_parent->highest_untouched_;
@@ -366,7 +389,7 @@ std::cout << "Num active before insert: " << last_block_->active_count_ << " Blo
     ++size_;
 
     update_skipfield_on_emplace(free_parent, free_idx);
-std::cout << "Inserted " << free_element->data << " at idx: " << free_idx << '\n';
+// std::cout << "Inserted " << free_element->data << " at idx: " << free_idx << '\n';
     return iterator(free_parent, free_idx);
 }
 
@@ -409,8 +432,6 @@ hive<T, Allocator>::erase(iterator itr)
 
     --size_;
     --block->active_count_;
-
-    // consider shrinking highest_untouched if fully connects
 
     ++itr;
     return itr;
