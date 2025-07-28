@@ -224,7 +224,6 @@ public:
     [[nodiscard]] iterator end() noexcept { return iterator(nullptr, 0); }
     [[nodiscard]] const_iterator end() const noexcept { return const_iterator(nullptr, 0); }
 
-    // TODO: implement insert
     iterator insert(const T& obj);
     iterator insert(T&& obj);
     
@@ -234,10 +233,6 @@ public:
     iterator erase(iterator itr);
 
 private:
-    // TODO; implement insert internal
-    template<typename U>
-    iterator insert_internal(U&& obj);
-
     void add_block();
     void update_skipfield_on_emplace(Block* block, size_t idx);
     void update_skipfield_on_erase(Block* block, size_t idx);
@@ -330,25 +325,17 @@ hive<T,Allocator>::begin() const noexcept
 }
 
 template<typename T, typename Allocator>
-template<typename U>
-typename hive<T, Allocator>::iterator 
-hive<T, Allocator>::insert_internal(U&& obj)
-{
-
-}
-
-template<typename T, typename Allocator>
 typename hive<T, Allocator>::iterator 
 hive<T, Allocator>::insert(const T& obj)
 {
-
+    return emplace(obj);
 }
 
 template<typename T, typename Allocator>
 typename hive<T, Allocator>::iterator 
 hive<T, Allocator>::insert(T&& obj)
 {
-
+    return emplace(std::move(obj));
 }
 
 template<typename T, typename Allocator>
