@@ -19,24 +19,35 @@ Ensure you have a C++20 compatible compiler (like GCC 13+ or Clang 18+), CMake (
 ### Step 3: Build the Project
 
 ```bash
-mkdir build
-cd build
-cmake ..
-make
+./build_all.sh
 ```
 
 ### Step 4: Run the Tests
 
 ```bash
 # From the 'build' directory
-./all_tests
+./build/Release/all_tests
 ```
 
 Expected output:
 
 ```
-[==========] Running 34 tests from 6 test suites.
+[==========] Running 25 tests from 3 test suites.
 [----------] Global test environment set-up.
+[----------] 12 tests from VectorTest
+[ RUN      ] VectorTest.DefaultConstructor
+[       OK ] VectorTest.DefaultConstructor (0 ms)
+[ RUN      ] VectorTest.Data
+[       OK ] VectorTest.Data (0 ms)
+[ RUN      ] VectorTest.PushBack
+[       OK ] VectorTest.PushBack (0 ms)
+...
+[ RUN      ] PopulatedVectorTest.Clear
+[       OK ] PopulatedVectorTest.Clear (0 ms)
+[ RUN      ] PopulatedVectorTest.ShrinkToFit
+[       OK ] PopulatedVectorTest.ShrinkToFit (0 ms)
+[----------] 8 tests from PopulatedVectorTest (0 ms total)
+
 [----------] 5 tests from HiveTest
 [ RUN      ] HiveTest.DefaultConstruct
 [       OK ] HiveTest.DefaultConstruct (0 ms)
@@ -50,13 +61,10 @@ Expected output:
 [       OK ] HiveTest.Clear (0 ms)
 [----------] 5 tests from HiveTest (0 ms total)
 
-[----------] 9 tests from HashTableTest
-... etc ...
-[----------] 20 tests from VectorTest
-... etc ...
 [----------] Global test environment tear-down
-[==========] 34 tests from 6 test suites ran. (1 ms total)
-[  PASSED  ] 34 tests.
+[==========] 25 tests from 3 test suites ran. (0 ms total)
+[  PASSED  ] 25 tests.
+
 ```
 
-Note: only forward iteration is currently supported.
+Note: only forward iteration is supported for hive currently
