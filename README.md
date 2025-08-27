@@ -25,7 +25,6 @@ Ensure you have a C++20 compatible compiler (like GCC 13+ or Clang 18+), CMake (
 ### Step 4: Run the Tests
 
 ```bash
-# From the 'build' directory
 ./build/Release/all_tests
 ```
 
