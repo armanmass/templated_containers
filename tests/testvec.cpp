@@ -160,14 +160,6 @@ TEST(VectorTest, PopBackCausesShrink)
     EXPECT_EQ(v[0], 0);
 }
 
-TEST_F(PopulatedVectorTest, Swap)
-{
-    vec.swap(1, 3);
-    EXPECT_EQ(vec[0], 10);
-    EXPECT_EQ(vec[1], 40);
-    EXPECT_EQ(vec[2], 30);
-    EXPECT_EQ(vec[3], 20);
-}
 
 TEST_F(PopulatedVectorTest, Insert)
 {

@@ -21,12 +21,21 @@ class Vector
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 public:
+/*
+    Special Member Functions
+*/
     Vector() { }
-    ~Vector() { delete[] data_; }
+    ~Vector() { clear(); }
 
     Vector(const Vector& other)
     {
+        size_ = other.size_;
+        capacity_ = other.capacity_;
 
+        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+
+        for (int i{}; i<size_; ++i)
+            data_[i] = other.data_[i];
     }
 
     Vector& operator=(const Vector& other)
@@ -34,17 +43,46 @@ public:
         if (this == &other)
             return *this;
 
+        std::destroy(data_, data_+size_);
+        std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
+
         size_ = other.size_;
         capacity_ = other.capacity_;
 
-
-        //TODO: deallocate/destruct old data
-        //allocate for new and copy
-        delete[] data_;
-        data_ = new value_type[capacity_];
+        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
 
         for (int i{}; i<size_; ++i)
             data_[i] = other.data_[i];
+
+        return *this;
+    }
+
+    Vector(Vector&& other) noexcept
+    {
+
+        // TODO: should we move alloc_? 
+        // is allocator for same value_type always the same?
+        data_ = other.data_;
+        size_ = other.size_;
+        capacity_ = other.capacity_;
+
+        other.data_ = nullptr;
+        other.size_ = 0;
+        other.capacity_ = 0;
+    }
+
+    Vector& operator=(Vector&& other)
+    {
+        if (this == &other)
+            return *this;
+
+        data_ = other.data_;
+        size_ = other.size_;
+        capacity_ = other.capacity_;
+
+        other.data_ = nullptr;
+        other.size_ = 0;
+        other.capacity_ = 0;
 
         return *this;
     }
@@ -61,7 +99,6 @@ public:
     [[nodiscard]] constexpr reference front() { return data_[0]; }
     [[nodiscard]] constexpr reference back() { return data_[size_-1]; }
     [[nodiscard]] constexpr pointer data() { return data_; }
-
 
 
     template <typename U>
@@ -105,42 +142,45 @@ public:
 
     constexpr void clear() noexcept
     {
-        //TODO: deallocate
-        delete[] data_;
+        std::destroy(data_, data_+size_);
+        std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
+
+        data_ = nullptr;
         size_ = 0;
-        capacity_ = 8;
+        capacity_ = 0;
     }
 
     constexpr void reserve(size_type new_capacity_)
     {
         if (new_capacity_ > capacity_)
-        {
             resize(new_capacity_);
-        }
     }
 
-    void shrink_to_fit() { resize(size_); }
+    constexpr void shrink_to_fit() { resize(size_); } 
 
-    void resize(size_type new_capacity_)
+    constexpr void resize(size_type new_capacity_)
     {
-        capacity_ = new_capacity_;
-        size_ = std::min(size_, capacity_);
-        value_type* new_data_ = new value_type[capacity_];
-
-        for (int i{}; i<size_; ++i)
+        if (new_capacity_ < size_)
         {
-            new_data_[i] = std::move(data_[i]);
+            std::destroy(data_+new_capacity_, data_+size_);
+            size_ = new_capacity_;
         }
 
-        delete data_;
+        value_type* new_data_ = std::allocator_traits<allocator_type>::allocate(alloc_, new_capacity_);
+        for (int i{}; i<size_; ++i)
+            new_data_[i] = std::move(data_[i]);
+
+        std::allocator_traits<allocator_type>::deallocate(data_, capacity_);
+
+        capacity_ = new_capacity_;
         data_ = new_data_;
     }
 
 private: 
-    [[no_unique_address]] allocator_type alloc_;
+    [[no_unique_address]] allocator_type alloc_{};
     value_type* data_{ nullptr };
     size_type size_{};
     size_type capacity_{};
 
-    void grow_if_full() { if (size_ == capacity_) { resize(capacity_*2); }  }
+    constexpr void grow_if_full() { if (size_ == capacity_) { resize(capacity_*2); }  }
 };
