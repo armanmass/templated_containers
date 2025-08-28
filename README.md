@@ -14,7 +14,9 @@ git clone https://github.com/armanmass/templated_containers.git
 
 ### Step 2: Prerequisites
 
-Ensure you have a C++20 compatible compiler (like GCC 13+ or Clang 18+), CMake (3.10+), and Git installed. The project uses GoogleTest for unit testing, which will be fetched automatically by CMake.
+Ensure you have a C++20 compatible compiler (like GCC 13+ or Clang 18+), CMake (4.1+), and Git installed. The project uses GoogleTest for unit testing, which will be fetched automatically by CMake.
+
+note: built/ran testing on GCC 15.2 with C++23 but should stil work with older compiler and C++20
 
 ### Step 3: Build the Project
 
