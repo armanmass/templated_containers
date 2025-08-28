@@ -1,8 +1,6 @@
 # Advanced C++ Data Structures
 
-A C++20 header-only library of custom data structures, featuring a high-performance `hive` container. This collection is designed for educational purposes and performance-critical applications. (also included are implementations of `Vector`, `HashTable`, and `BST`.)
-
-The primary focus is the `hive` container which maintains iterator validation upon insertion and deletion. `std::hive` which will be introduced in the c++ 26 standard is the main motivator.
+A C++23 header-only library of STL data structures, featuring a high-performance `hive` container. 
 
 ## Building and Running
 
