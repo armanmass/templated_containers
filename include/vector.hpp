@@ -1,156 +1,146 @@
+#include <iterator>
+#include <memory>
 #include <stdexcept>
 #include <utility>
 #include <cstddef>
 
-template <typename T>
+template <typename T, typename Allocator = std::allocator<T>>
 class Vector
-{   public:
-        Vector()
-        {
-           vec = new T[capacity_]; 
-        }
+{   
+    using value_type             = T;
+    using allocator_type         = Allocator;
+    using size_type              = std::size_t;
+    using difference_type        = std::ptrdiff_t;
+    using reference              = value_type&;
+    using const_reference        = const value_type&;
+    using pointer                = typename std::allocator_traits<Allocator>::pointer;
+    using const_pointer          = typename std::allocator_traits<Allocator>::const_pointer;
+    using iterator               = typename std::allocator_traits<Allocator>::pointer;
+    using const_iterator         = typename std::allocator_traits<Allocator>::const_pointer;
+    using reverse_iterator       = std::reverse_iterator<iterator>;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-        ~Vector()
-        {
-            delete[] vec;
-        }
+public:
+    Vector() { }
+    ~Vector() { delete[] data_; }
 
-        Vector& operator=(const Vector& other)
-        {
-            if (this == &other)
-                return *this;
+    Vector(const Vector& other)
+    {
 
-            size_ = other.size_;
-            capacity_ = other.capacity_;
+    }
 
-            delete[] vec;
-            vec = new T[capacity_];
-
-            for (int i{}; i<size_; ++i)
-            {
-                vec[i] = other.vec[i];
-            }
-
+    Vector& operator=(const Vector& other)
+    {
+        if (this == &other)
             return *this;
-        }
 
-        T& operator[](size_t idx)
+        size_ = other.size_;
+        capacity_ = other.capacity_;
+
+
+        //TODO: deallocate/destruct old data
+        //allocate for new and copy
+        delete[] data_;
+        data_ = new value_type[capacity_];
+
+        for (int i{}; i<size_; ++i)
+            data_[i] = other.data_[i];
+
+        return *this;
+    }
+
+    [[nodiscard]] constexpr reference operator[](size_type idx) { return data_[idx]; }
+
+    [[nodiscard]] constexpr reference at(size_type idx)
+    {
+        if (idx < 0 || idx >= size_)
+            throw std::out_of_range("Index out of range.");
+        return data_[idx];
+    }
+
+    [[nodiscard]] constexpr reference front() { return data_[0]; }
+    [[nodiscard]] constexpr reference back() { return data_[size_-1]; }
+    [[nodiscard]] constexpr pointer data() { return data_; }
+
+
+
+    template <typename U>
+    constexpr void push_back(U&& val) noexcept
+    {
+        grow_if_full();
+        data_[size_] = std::forward<U>(val);
+        ++size_;
+    }
+
+    constexpr void pop_back() noexcept
+    {
+        --size_;
+        //TODO: destruct/dealloc old object
+    }
+
+    constexpr void swap(Vector& other)
+    {
+        using std::swap;
+        swap(alloc_, other.alloc_);
+        swap(data_, other.data_);
+        swap(size_, other.size_);
+        swap(capacity_, other.capacity_);
+    }
+
+    template<typename U>
+    constexpr void insert(size_type idx, U&& val)
+    {
+        grow_if_full();
+        for (size_type i{size_}; i > idx; --i)
+            data_[i] = std::move(data_[i-1]); 
+
+        data_[idx] = std::forward<U>(val);
+        ++size_;
+    }
+
+
+    [[nodiscard]] constexpr size_type size() const noexcept { return size_; } 
+    [[nodiscard]] constexpr size_type capacity() const noexcept { return capacity_; } 
+    [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; } 
+
+    constexpr void clear() noexcept
+    {
+        //TODO: deallocate
+        delete[] data_;
+        size_ = 0;
+        capacity_ = 8;
+    }
+
+    constexpr void reserve(size_type new_capacity_)
+    {
+        if (new_capacity_ > capacity_)
         {
-            return vec[idx];
+            resize(new_capacity_);
         }
+    }
 
-        T& at(size_t idx)
+    void shrink_to_fit() { resize(size_); }
+
+    void resize(size_type new_capacity_)
+    {
+        capacity_ = new_capacity_;
+        size_ = std::min(size_, capacity_);
+        value_type* new_data_ = new value_type[capacity_];
+
+        for (int i{}; i<size_; ++i)
         {
-            if (idx < 0 || idx >= size_)
-                throw std::out_of_range("Index out of range.");
-            return vec[idx];
+            new_data_[i] = std::move(data_[i]);
         }
 
-        T& front()
-        {
-            return vec[0];
-        }
+        delete data_;
+        data_ = new_data_;
+    }
 
-        T& back()
-        {
-            return vec[size_-1];
-        }
+private: 
+    [[no_unique_address]] allocator_type alloc_;
+    value_type* data_{ nullptr };
+    size_type size_{};
+    size_type capacity_{};
 
-        Vector<T>* data()
-        {
-            return this;
-        }
-
-
-        void push_back(T& value)
-        {
-            if (size_ == capacity_)
-                resize(capacity_*2);
-
-            vec[size_] = value;
-            ++size_;
-        }
-
-        void push_back(T&& value)
-        {
-            if (size_ == capacity_)
-                resize(capacity_*2);
-
-            vec[size_] = std::move(value);
-            ++size_;
-        }
-
-        void pop_back() noexcept
-        {
-            if (size_)
-                --size_;
-
-            if((float)size_ / capacity_ < decrease_size_bound_)
-                resize((capacity_+1)/2);
-        }
-
-        void swap(size_t idx1, size_t idx2)
-        {
-            T temp = std::move(vec[idx2]);
-            vec[idx2] = std::move(vec[idx1]);
-            vec[idx1] = std::move(temp);
-        }
-
-        void insert(size_t idx, T&& val)
-        {
-            if (size_+1 >= capacity_)
-                resize(capacity_*2);
-            for (size_t i{size_}; i > idx; --i)
-                vec[i] = std::move(vec[i-1]); 
-
-            vec[idx] = val;
-            
-            ++size_;
-        }
-
-        size_t size() const noexcept { return size_; } 
-        size_t capacity() const noexcept { return capacity_; } 
-        bool empty() const noexcept { return size_ == 0; } 
-        void clear() noexcept
-        {
-            delete[] vec;
-            size_ = 0;
-            capacity_ = 8;
-            vec = new T[capacity_];
-        }
-
-        void reserve(size_t new_capacity_)
-        {
-            if (new_capacity_ > capacity_)
-            {
-                resize(new_capacity_);
-            }
-        }
-
-        void shrink_to_fit()
-        {
-            resize(size_);
-        }
-
-        void resize(size_t new_capacity_)
-        {
-            capacity_ = new_capacity_;
-            size_ = std::min(size_, capacity_);
-            T* new_vec = new T[capacity_];
-
-            for (int i{}; i<size_; ++i)
-            {
-                new_vec[i] = std::move(vec[i]);
-            }
-
-            delete vec;
-            vec = new_vec;
-        }
-
-    private: 
-        T* vec{ nullptr };
-        size_t size_{ };
-        size_t capacity_{ 8 };
-        //static constexpr float increase_size_bound_{ 0.8 };
-        static constexpr float decrease_size_bound_{ 0.2 };
+    void grow_if_full() { if (size_ == capacity_) { resize(capacity_*2); }  }
 };

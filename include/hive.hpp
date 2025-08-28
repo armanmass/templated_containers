@@ -1,5 +1,4 @@
 #include <cstddef>
-#include <iostream>
 #include <type_traits>
 #include <memory>
 
@@ -238,7 +237,7 @@ private:
     void update_skipfield_on_erase(Block* block, size_t idx);
 };
 
-    /* --- Thick Functions --- */
+    /* --- Forward Declared Functions --- */
 
 template<typename T, typename Allocator>
 void hive<T, Allocator>::add_block()
@@ -361,7 +360,6 @@ hive<T, Allocator>::emplace(Args&&... args)
         {
             add_block();
         }
-// std::cout << "Num active before insert: " << last_block_->active_count_ << " Block capacity: " << last_block_->capacity_ << '\n';
         free_parent = last_block_;
 
         free_idx = free_parent->highest_untouched_;
@@ -376,7 +374,6 @@ hive<T, Allocator>::emplace(Args&&... args)
     ++size_;
 
     update_skipfield_on_emplace(free_parent, free_idx);
-// std::cout << "Inserted " << free_element->data << " at idx: " << free_idx << '\n';
     return iterator(free_parent, free_idx);
 }
 
