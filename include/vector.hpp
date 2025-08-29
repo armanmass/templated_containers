@@ -1,12 +1,16 @@
 #include <iterator>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 #include <cstddef>
 
 template <typename T, typename Allocator = std::allocator<T>>
 class Vector
 {   
+    template <bool IsConst>
+    class Iterator;
+
     using value_type             = T;
     using allocator_type         = Allocator;
     using size_type              = std::size_t;
@@ -15,8 +19,8 @@ class Vector
     using const_reference        = const value_type&;
     using pointer                = typename std::allocator_traits<Allocator>::pointer;
     using const_pointer          = typename std::allocator_traits<Allocator>::const_pointer;
-    using iterator               = typename std::allocator_traits<Allocator>::pointer;
-    using const_iterator         = typename std::allocator_traits<Allocator>::const_pointer;
+    using iterator               = Iterator<false>;
+    using const_iterator         = Iterator<true>;
     using reverse_iterator       = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
@@ -24,8 +28,16 @@ public:
 /*
     Special Member Functions
 */
-    Vector() { }
+    constexpr Vector() { }
     ~Vector() { clear(); }
+
+    explicit Vector(size_type n)
+        : size_(n),
+          capacity_(n)
+    {
+        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+        std::uninitialized_default_construct_n(data_, size_);
+    }
 
     Vector(const Vector& other)
     {
@@ -57,24 +69,23 @@ public:
         return *this;
     }
 
-    Vector(Vector&& other) noexcept
+    constexpr Vector(Vector&& other) noexcept
+        : alloc_(std::move(other.alloc_)),
+          data_(other.data_),
+          size_(other.size_),
+          capacity_(other.capacity_)
     {
-
-        // TODO: should we move alloc_? 
-        // is allocator for same value_type always the same?
-        data_ = other.data_;
-        size_ = other.size_;
-        capacity_ = other.capacity_;
-
         other.data_ = nullptr;
         other.size_ = 0;
         other.capacity_ = 0;
     }
 
-    Vector& operator=(Vector&& other)
+    constexpr Vector& operator=(Vector&& other) noexcept
     {
         if (this == &other)
             return *this;
+
+        alloc_ = std::move(other.alloc_);
 
         data_ = other.data_;
         size_ = other.size_;
@@ -87,8 +98,23 @@ public:
         return *this;
     }
 
-    [[nodiscard]] constexpr reference operator[](size_type idx) { return data_[idx]; }
+    void assign(size_type count, const value_type& val)
+    {
+        std::destroy(data_, data_+size_);
+        size_ = count;
+        if (count > capacity_)
+        {
+            std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
+            data_ = std::allocator_traits<allocator_type>::allocate(alloc_, count);
+            capacity_ = count;
+        }
+        std::uninitialized_fill_n(data_, count, val);
+    }
+    [[nodiscard]] allocator_type get_allocator() const noexcept { return alloc_; }
 
+/*
+    Element Access
+*/
     [[nodiscard]] constexpr reference at(size_type idx)
     {
         if (idx < 0 || idx >= size_)
@@ -96,10 +122,45 @@ public:
         return data_[idx];
     }
 
-    [[nodiscard]] constexpr reference front() { return data_[0]; }
-    [[nodiscard]] constexpr reference back() { return data_[size_-1]; }
-    [[nodiscard]] constexpr pointer data() { return data_; }
+    [[nodiscard]] constexpr const_reference at(size_type idx) const
+    {
+        if (idx < 0 || idx >= size_)
+            throw std::out_of_range("Index out of range.");
+        return data_[idx];
+    }
 
+    [[nodiscard]] constexpr reference operator[](size_type idx) { return data_[idx]; }
+    [[nodiscard]] constexpr const_reference operator[](size_type idx) const { return data_[idx]; }
+
+    [[nodiscard]] constexpr reference front() { return data_[0]; }
+    [[nodiscard]] constexpr const_reference front() const { return data_[0]; }
+
+    [[nodiscard]] constexpr reference back() { return data_[size_-1]; }
+    [[nodiscard]] constexpr const_reference back() const { return data_[size_-1]; }
+
+    [[nodiscard]] constexpr pointer data() { return data_; }
+    [[nodiscard]] constexpr const_pointer data() const { return data_; }
+
+/*
+    Iterators
+*/
+    [[nodiscard]] constexpr iterator begin() noexcept { return iterator{data_}; }
+    [[nodiscard]] constexpr const_iterator begin() const noexcept { return const_iterator{data_}; }
+
+    [[nodiscard]] constexpr iterator end() noexcept { return iterator{data_+size_}; }
+    [[nodiscard]] constexpr const_iterator end() const noexcept { return const_iterator{data_+size_}; }
+
+    [[nodiscard]] constexpr reverse_iterator rbegin() noexcept { reverse_iterator{data_+size_-1}; }
+    [[nodiscard]] constexpr const_reverse_iterator rbegin() const noexcept { const_reverse_iterator{data_+size_-1}; }
+    
+    [[nodiscard]] constexpr reverse_iterator rend() noexcept { reverse_iterator{data_-1}; }
+    [[nodiscard]] constexpr const_reverse_iterator rend() const noexcept { const_reverse_iterator{data_-1}; }
+    
+    [[nodiscard]] constexpr const_iterator cbegin() const noexcept { return const_iterator{data_}; }
+    [[nodiscard]] constexpr const_iterator cend() const noexcept { return const_iterator{data_+size_}; }
+
+    [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept { const_reverse_iterator{data_+size_-1}; }
+    [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept { const_reverse_iterator{data_-1}; }
 
     template <typename U>
     constexpr void push_back(U&& val) noexcept
@@ -112,7 +173,7 @@ public:
     constexpr void pop_back() noexcept
     {
         --size_;
-        //TODO: destruct/dealloc old object
+        std::destroy_at(data_+size_);
     }
 
     constexpr void swap(Vector& other)
@@ -170,7 +231,7 @@ public:
         for (int i{}; i<size_; ++i)
             new_data_[i] = std::move(data_[i]);
 
-        std::allocator_traits<allocator_type>::deallocate(data_, capacity_);
+        std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
 
         capacity_ = new_capacity_;
         data_ = new_data_;
@@ -183,4 +244,16 @@ private:
     size_type capacity_{};
 
     constexpr void grow_if_full() { if (size_ == capacity_) { resize(capacity_*2); }  }
+};
+
+template <typename T, typename Allocator>
+template<bool IsConst>
+class Vector<T, Allocator>::Iterator
+{
+public:
+    using pointer   = std::conditional_t<IsConst, Vector::const_pointer, Vector::pointer>;
+    using reference = std::conditional_t<IsConst, Vector::const_pointer, Vector::pointer>;
+
+
+
 };

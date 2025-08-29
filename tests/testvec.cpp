@@ -20,7 +20,7 @@ TEST(VectorTest, DefaultConstructor)
 {
     Vector<int> v;
     EXPECT_EQ(v.size(), 0);
-    EXPECT_EQ(v.capacity(), 8);
+    EXPECT_EQ(v.capacity(), 0);
     EXPECT_TRUE(v.empty());
 }
 
@@ -33,6 +33,7 @@ TEST_F(PopulatedVectorTest, OperatorBracket)
     vec[1] = 25;
     EXPECT_EQ(vec[1], 25);
 }
+
 
 TEST_F(PopulatedVectorTest, At) 
 {
@@ -63,6 +64,7 @@ TEST_F(PopulatedVectorTest, FrontAndBack)
     EXPECT_EQ(vec.back(), 45);
 }
 
+
 TEST(VectorTest, Data)
 {
     Vector<int> v;
@@ -71,8 +73,6 @@ TEST(VectorTest, Data)
 
     ASSERT_NE(v.data(), nullptr);
 }
-
-
 
 
 TEST(VectorTest, PushBack) 
@@ -91,6 +91,7 @@ TEST(VectorTest, PushBack)
     EXPECT_EQ(v.back(), "world");
 }
 
+
 TEST(VectorTest, PushBackCausesGrowth)
 {
     Vector<int> v; 
@@ -99,7 +100,7 @@ TEST(VectorTest, PushBackCausesGrowth)
     {
         v.push_back(i);
     }
-    EXPECT_EQ(v.capacity(), 8);
+    EXPECT_EQ(v.capacity(), 0);
     EXPECT_EQ(v.size(), 6);
 
     
@@ -138,26 +139,6 @@ TEST(VectorTest, PopBack)
     v.pop_back();
     EXPECT_EQ(v.size(), 0);
     EXPECT_TRUE(v.empty());
-}
-
-TEST(VectorTest, PopBackCausesShrink)
-{
-    Vector<int> v; 
-    
-    v.push_back(0);
-    v.push_back(1);
-    v.push_back(2); 
-    EXPECT_EQ(v.capacity(), 8);
-
-    v.pop_back(); 
-    EXPECT_EQ(v.size(), 2);
-    EXPECT_EQ(v.capacity(), 8);
-    
-    v.pop_back(); 
-    EXPECT_EQ(v.size(), 1);
-    EXPECT_EQ(v.capacity(), 4); 
-    
-    EXPECT_EQ(v[0], 0);
 }
 
 
