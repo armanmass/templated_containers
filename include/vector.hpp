@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <stdexcept>
@@ -32,6 +33,11 @@ public:
     constexpr Vector() { }
     ~Vector() { clear(); }
 
+    explicit Vector(const allocator_type& alloc)
+        : alloc_(alloc)
+    { }
+
+
     explicit Vector(size_type n)
         : size_(n),
           capacity_(n)
@@ -39,6 +45,25 @@ public:
         data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
         std::uninitialized_default_construct_n(data_, size_);
     }
+
+
+    explicit Vector(size_type n, const_reference val)
+        : size_(n),
+          capacity_(n)
+    {
+        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+        std::uninitialized_fill_n(data_, size_, val);
+    }
+
+
+    Vector(std::initializer_list<value_type> init)
+        : size_(init.size()),
+          capacity_(init.size())
+    {
+        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+        std::ranges::uninitialized_copy(init, data_);
+    }
+
 
     Vector(const Vector& other)
     {
@@ -50,6 +75,7 @@ public:
         for (int i{}; i<size_; ++i)
             data_[i] = other.data_[i];
     }
+
 
     Vector& operator=(const Vector& other)
     {
@@ -70,6 +96,7 @@ public:
         return *this;
     }
 
+
     constexpr Vector(Vector&& other) noexcept
         : alloc_(std::move(other.alloc_)),
           data_(other.data_),
@@ -80,6 +107,7 @@ public:
         other.size_ = 0;
         other.capacity_ = 0;
     }
+
 
     constexpr Vector& operator=(Vector&& other) noexcept
     {
@@ -99,6 +127,7 @@ public:
         return *this;
     }
 
+
     void assign(size_type count, const value_type& val)
     {
         std::destroy(data_, data_+size_);
@@ -111,6 +140,8 @@ public:
         }
         std::uninitialized_fill_n(data_, count, val);
     }
+
+
     [[nodiscard]] allocator_type get_allocator() const noexcept { return alloc_; }
 
 /***********************************
@@ -128,17 +159,17 @@ public:
         return data_[idx];
     }
 
-    [[nodiscard]] constexpr reference operator[](size_type idx) { return data_[idx]; }
-    [[nodiscard]] constexpr const_reference operator[](size_type idx) const { return data_[idx]; }
+    [[nodiscard]] constexpr reference operator[](size_type idx) noexcept { return data_[idx]; }
+    [[nodiscard]] constexpr const_reference operator[](size_type idx) const noexcept { return data_[idx]; }
 
-    [[nodiscard]] constexpr reference front() { return data_[0]; }
-    [[nodiscard]] constexpr const_reference front() const { return data_[0]; }
+    [[nodiscard]] constexpr reference front() noexcept { return data_[0]; }
+    [[nodiscard]] constexpr const_reference front() const noexcept { return data_[0]; }
 
-    [[nodiscard]] constexpr reference back() { return data_[size_-1]; }
-    [[nodiscard]] constexpr const_reference back() const { return data_[size_-1]; }
+    [[nodiscard]] constexpr reference back() noexcept { return data_[size_-1]; }
+    [[nodiscard]] constexpr const_reference back() const noexcept { return data_[size_-1]; }
 
-    [[nodiscard]] constexpr pointer data() { return data_; }
-    [[nodiscard]] constexpr const_pointer data() const { return data_; }
+    [[nodiscard]] constexpr pointer data() noexcept { return data_; }
+    [[nodiscard]] constexpr const_pointer data() const noexcept { return data_; }
 
 /***********************************
              Iterators
@@ -192,6 +223,7 @@ public:
         capacity_ = 0;
     }
 
+
     template<typename U>
     constexpr iterator insert(const_iterator pos, U&& val)
     { 
@@ -200,6 +232,7 @@ public:
         data_[idx] = std::forward<U>(val);
         return iterator{data_+idx};
     }
+
 
     constexpr iterator erase(const_iterator pos)
     {
@@ -210,18 +243,16 @@ public:
 
 
     template <typename U>
-    constexpr void push_back(U&& val) noexcept
+    constexpr void push_back(U&& val)
     {
         grow_if_full_();
         data_[size_] = std::forward<U>(val);
         ++size_;
     }
 
-    constexpr void pop_back() noexcept
-    {
-        --size_;
-        std::destroy_at(data_+size_);
-    }
+
+    constexpr void pop_back() noexcept { std::destroy_at(data_ + --size_); }
+
 
     constexpr void resize(size_type new_capacity_)
     {
@@ -241,7 +272,8 @@ public:
         data_ = new_data_;
     }
 
-    constexpr void swap(Vector& other)
+
+    constexpr void swap(Vector& other) noexcept
     {
         using std::swap;
         swap(alloc_, other.alloc_);
@@ -249,8 +281,6 @@ public:
         swap(size_, other.size_);
         swap(capacity_, other.capacity_);
     }
-
-
 
 
 private: 
@@ -277,7 +307,6 @@ private:
             std::destroy(data_+start, data_+start+offset);
             for (size_t i{start}; i<start+offset; ++i)
                 data_[i] = std::move(data_[i+offset]);
-            // should we destruct unspecified state moved from elements?
         }
 
         size_ = new_size_;
@@ -289,12 +318,70 @@ template <typename T, typename Allocator>
 template<bool IsConst>
 class Vector<T, Allocator>::Iterator
 {
-public:
     using pointer   = std::conditional_t<IsConst, Vector::const_pointer, Vector::pointer>;
-    using reference = std::conditional_t<IsConst, Vector::const_pointer, Vector::pointer>;
+    using reference = std::conditional_t<IsConst, Vector::const_reference, Vector::reference>;
+public:
+    Iterator(pointer ptr)
+        : ptr_(ptr)
+    { }
+
+    constexpr Iterator& operator=(const Iterator& other) noexcept 
+    {
+        ptr_ = other.ptr_;
+        return *this;
+    }
+
+    constexpr Iterator& operator++() noexcept 
+    { 
+        ++ptr_; 
+        return *this;
+    }
+
+    constexpr Iterator operator++(int) noexcept 
+    { 
+        Iterator temp{ptr_};
+        ptr_++;
+        return temp;
+    }
 
 
+    constexpr Iterator& operator--() noexcept 
+    { 
+        --ptr_; 
+        return *this;
+    }
 
+    constexpr Iterator operator--(int) noexcept 
+    { 
+        Iterator temp{ptr_};
+        ptr_--;
+        return temp;
+    }
+
+    constexpr Iterator& operator+=(Vector::difference_type n) noexcept 
+    { 
+        ptr_ += n;
+        return *this;
+    }
+
+    constexpr Iterator& operator-=(Vector::difference_type n) noexcept
+    {
+        ptr_ += n;
+        return *this;
+    }
+
+    constexpr Iterator operator+(Vector::difference_type n) const noexcept
+    {
+        return Iterator{ptr_+n};
+    }
+
+    constexpr Iterator operator-(Vector::difference_type n) const noexcept
+    {
+        return Iterator{ptr_-n};
+    }
+
+private:
+    pointer ptr_;
 };
 
 /***********************************

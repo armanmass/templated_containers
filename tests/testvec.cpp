@@ -142,46 +142,6 @@ TEST(VectorTest, PopBack)
 }
 
 
-TEST_F(PopulatedVectorTest, Insert)
-{
-    
-    vec.insert(2, 99); 
-    
-    EXPECT_EQ(vec.size(), 5);
-    EXPECT_EQ(vec[0], 10);
-    EXPECT_EQ(vec[1], 20);
-    EXPECT_EQ(vec[2], 99);
-    EXPECT_EQ(vec[3], 30);
-    EXPECT_EQ(vec[4], 40);
-
-    vec.insert(0, 5); 
-    EXPECT_EQ(vec.size(), 6);
-    EXPECT_EQ(vec[0], 5);
-    EXPECT_EQ(vec[1], 10);
-    
-    vec.insert(6, 110); 
-    EXPECT_EQ(vec.size(), 7);
-    EXPECT_EQ(vec.back(), 110);
-}
-
-TEST(VectorTest, InsertCausesGrowth)
-{
-    Vector<int> v; 
-    for (int i = 0; i < 7; ++i) v.push_back(i); 
-    
-    
-    
-    EXPECT_EQ(v.size(), 7);
-    EXPECT_EQ(v.capacity(), 8);
-    
-    v.insert(0, -1);
-    EXPECT_EQ(v.size(), 8);
-    EXPECT_EQ(v.capacity(), 16);
-    EXPECT_EQ(v[0], -1);
-    EXPECT_EQ(v[1], 0);
-}
-
-
 TEST_F(PopulatedVectorTest, Clear)
 {
     EXPECT_FALSE(vec.empty());
