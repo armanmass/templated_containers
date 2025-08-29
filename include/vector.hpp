@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iterator>
 #include <memory>
 #include <stdexcept>
@@ -191,8 +192,6 @@ public:
         capacity_ = 0;
     }
 
-    // TODO: implement range support for insert and erase
-    // supporting functions are implemented
     template<typename U>
     constexpr iterator insert(const_iterator pos, U&& val)
     { 
@@ -205,8 +204,8 @@ public:
     constexpr iterator erase(const_iterator pos)
     {
         difference_type idx = pos-cbegin();
-
-
+        shift_data_(idx, -1);
+        return iterator{data_+idx};
     }
 
 
@@ -222,26 +221,6 @@ public:
     {
         --size_;
         std::destroy_at(data_+size_);
-    }
-
-    constexpr void swap(Vector& other)
-    {
-        using std::swap;
-        swap(alloc_, other.alloc_);
-        swap(data_, other.data_);
-        swap(size_, other.size_);
-        swap(capacity_, other.capacity_);
-    }
-
-    template<typename U>
-    constexpr void insert(size_type idx, U&& val)
-    {
-        grow_if_full_();
-        for (size_type i{size_}; i > idx; --i)
-            data_[i] = std::move(data_[i-1]); 
-
-        data_[idx] = std::forward<U>(val);
-        ++size_;
     }
 
     constexpr void resize(size_type new_capacity_)
@@ -261,6 +240,18 @@ public:
         capacity_ = new_capacity_;
         data_ = new_data_;
     }
+
+    constexpr void swap(Vector& other)
+    {
+        using std::swap;
+        swap(alloc_, other.alloc_);
+        swap(data_, other.data_);
+        swap(size_, other.size_);
+        swap(capacity_, other.capacity_);
+    }
+
+
+
 
 private: 
     [[no_unique_address]] allocator_type alloc_{};
@@ -293,6 +284,7 @@ private:
     }
 };
 
+// TODO:
 template <typename T, typename Allocator>
 template<bool IsConst>
 class Vector<T, Allocator>::Iterator
@@ -304,3 +296,20 @@ public:
 
 
 };
+
+/***********************************
+        Non-member functions 
+***********************************/
+
+template <typename T, typename Allocator>
+constexpr void swap(const Vector<T, Allocator>& lhs, const Vector<T, Allocator>& rhs)
+noexcept(noexcept(lhs.swap(rhs)))
+{ lhs.swap(rhs); }
+
+template <typename T, typename Allocator>
+constexpr bool operator==(const Vector<T, Allocator>& lhs, const Vector<T, Allocator>& rhs) noexcept
+{ return (lhs.size() == rhs.size()) && std::ranges::equal(lhs, rhs); }
+
+template <typename T, typename Allocator>
+constexpr auto operator<=>(const Vector<T, Allocator>& lhs, const Vector<T, Allocator>& rhs) noexcept
+{ return std::lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end()); }
