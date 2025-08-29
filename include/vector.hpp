@@ -25,9 +25,9 @@ class Vector
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 public:
-/*
-    Special Member Functions
-*/
+/***********************************
+      Special Member Functions 
+***********************************/
     constexpr Vector() { }
     ~Vector() { clear(); }
 
@@ -112,20 +112,18 @@ public:
     }
     [[nodiscard]] allocator_type get_allocator() const noexcept { return alloc_; }
 
-/*
-    Element Access
-*/
+/***********************************
+          Element Access 
+***********************************/
     [[nodiscard]] constexpr reference at(size_type idx)
     {
-        if (idx < 0 || idx >= size_)
-            throw std::out_of_range("Index out of range.");
+        if (idx < 0 || idx >= size_) throw std::out_of_range("Index out of range.");
         return data_[idx];
     }
 
     [[nodiscard]] constexpr const_reference at(size_type idx) const
     {
-        if (idx < 0 || idx >= size_)
-            throw std::out_of_range("Index out of range.");
+        if (idx < 0 || idx >= size_) throw std::out_of_range("Index out of range.");
         return data_[idx];
     }
 
@@ -141,31 +139,81 @@ public:
     [[nodiscard]] constexpr pointer data() { return data_; }
     [[nodiscard]] constexpr const_pointer data() const { return data_; }
 
-/*
-    Iterators
-*/
+/***********************************
+             Iterators
+***********************************/
     [[nodiscard]] constexpr iterator begin() noexcept { return iterator{data_}; }
     [[nodiscard]] constexpr const_iterator begin() const noexcept { return const_iterator{data_}; }
 
     [[nodiscard]] constexpr iterator end() noexcept { return iterator{data_+size_}; }
     [[nodiscard]] constexpr const_iterator end() const noexcept { return const_iterator{data_+size_}; }
 
-    [[nodiscard]] constexpr reverse_iterator rbegin() noexcept { reverse_iterator{data_+size_-1}; }
-    [[nodiscard]] constexpr const_reverse_iterator rbegin() const noexcept { const_reverse_iterator{data_+size_-1}; }
+    [[nodiscard]] constexpr reverse_iterator rbegin() noexcept { return reverse_iterator{end()}; }
+    [[nodiscard]] constexpr const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator{end()}; }
     
-    [[nodiscard]] constexpr reverse_iterator rend() noexcept { reverse_iterator{data_-1}; }
-    [[nodiscard]] constexpr const_reverse_iterator rend() const noexcept { const_reverse_iterator{data_-1}; }
+    [[nodiscard]] constexpr reverse_iterator rend() noexcept { return reverse_iterator{begin()}; }
+    [[nodiscard]] constexpr const_reverse_iterator rend() const noexcept { return const_reverse_iterator{begin()}; }
     
-    [[nodiscard]] constexpr const_iterator cbegin() const noexcept { return const_iterator{data_}; }
-    [[nodiscard]] constexpr const_iterator cend() const noexcept { return const_iterator{data_+size_}; }
+    [[nodiscard]] constexpr const_iterator cbegin() const noexcept { return begin(); }
+    [[nodiscard]] constexpr const_iterator cend() const noexcept { return end(); }
 
-    [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept { const_reverse_iterator{data_+size_-1}; }
-    [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept { const_reverse_iterator{data_-1}; }
+    [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept { return rbegin(); }
+    [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept { return rend(); }
+
+
+/***********************************
+             Capacity 
+***********************************/
+    [[nodiscard]] constexpr size_type size() const noexcept { return size_; } 
+    [[nodiscard]] constexpr size_type capacity() const noexcept { return capacity_; } 
+    [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; } 
+
+    constexpr void reserve(size_type new_capacity_)
+    {
+        if (new_capacity_ > capacity_)
+            resize(new_capacity_);
+    }
+
+    constexpr void shrink_to_fit() { resize(size_); } 
+
+
+/***********************************
+             Modifiers 
+***********************************/
+
+    constexpr void clear() noexcept
+    {
+        std::destroy(data_, data_+size_);
+        std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
+
+        data_ = nullptr;
+        size_ = 0;
+        capacity_ = 0;
+    }
+
+    // TODO: implement range support for insert and erase
+    // supporting functions are implemented
+    template<typename U>
+    constexpr iterator insert(const_iterator pos, U&& val)
+    { 
+        difference_type idx = pos-cbegin();
+        shift_data_(idx, 1);
+        data_[idx] = std::forward<U>(val);
+        return iterator{data_+idx};
+    }
+
+    constexpr iterator erase(const_iterator pos)
+    {
+        difference_type idx = pos-cbegin();
+
+
+    }
+
 
     template <typename U>
     constexpr void push_back(U&& val) noexcept
     {
-        grow_if_full();
+        grow_if_full_();
         data_[size_] = std::forward<U>(val);
         ++size_;
     }
@@ -188,36 +236,13 @@ public:
     template<typename U>
     constexpr void insert(size_type idx, U&& val)
     {
-        grow_if_full();
+        grow_if_full_();
         for (size_type i{size_}; i > idx; --i)
             data_[i] = std::move(data_[i-1]); 
 
         data_[idx] = std::forward<U>(val);
         ++size_;
     }
-
-
-    [[nodiscard]] constexpr size_type size() const noexcept { return size_; } 
-    [[nodiscard]] constexpr size_type capacity() const noexcept { return capacity_; } 
-    [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; } 
-
-    constexpr void clear() noexcept
-    {
-        std::destroy(data_, data_+size_);
-        std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
-
-        data_ = nullptr;
-        size_ = 0;
-        capacity_ = 0;
-    }
-
-    constexpr void reserve(size_type new_capacity_)
-    {
-        if (new_capacity_ > capacity_)
-            resize(new_capacity_);
-    }
-
-    constexpr void shrink_to_fit() { resize(size_); } 
 
     constexpr void resize(size_type new_capacity_)
     {
@@ -227,7 +252,7 @@ public:
             size_ = new_capacity_;
         }
 
-        value_type* new_data_ = std::allocator_traits<allocator_type>::allocate(alloc_, new_capacity_);
+        pointer new_data_ = std::allocator_traits<allocator_type>::allocate(alloc_, new_capacity_);
         for (int i{}; i<size_; ++i)
             new_data_[i] = std::move(data_[i]);
 
@@ -239,11 +264,33 @@ public:
 
 private: 
     [[no_unique_address]] allocator_type alloc_{};
-    value_type* data_{ nullptr };
+    pointer   data_{ nullptr };
     size_type size_{};
     size_type capacity_{};
 
-    constexpr void grow_if_full() { if (size_ == capacity_) { resize(capacity_*2); }  }
+    constexpr void grow_if_full_() { if (size_ == capacity_) { resize(capacity_*2); }  }
+    constexpr void shift_data_(size_t start, int shift)
+    {
+        size_t new_size_ = size_ + shift;
+        if (new_size_ > capacity_) 
+            resize(new_size_*2);
+
+        size_t offset = shift < 0 ? -shift : shift;
+        if (shift > 0)
+        {
+            for (int i{size_+offset-1}; i>start+offset; --i)
+                data_[i] = std::move(data_[i-offset]);
+        }
+        else
+        {
+            std::destroy(data_+start, data_+start+offset);
+            for (size_t i{start}; i<start+offset; ++i)
+                data_[i] = std::move(data_[i+offset]);
+            // should we destruct unspecified state moved from elements?
+        }
+
+        size_ = new_size_;
+    }
 };
 
 template <typename T, typename Allocator>
