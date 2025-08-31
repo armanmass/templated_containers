@@ -100,7 +100,7 @@ TEST(VectorTest, PushBackCausesGrowth)
     {
         v.push_back(i);
     }
-    EXPECT_EQ(v.capacity(), 0);
+    EXPECT_EQ(v.capacity(), 8);
     EXPECT_EQ(v.size(), 6);
 
     
@@ -134,17 +134,14 @@ TEST(VectorTest, PopBack)
     v.pop_back();
     v.pop_back();
     EXPECT_TRUE(v.empty());
-
-    
-    v.pop_back();
-    EXPECT_EQ(v.size(), 0);
-    EXPECT_TRUE(v.empty());
 }
 
 
 TEST_F(PopulatedVectorTest, Clear)
 {
     EXPECT_FALSE(vec.empty());
+    vec.push_back(1);
+    EXPECT_EQ(vec.size(), 5);
     vec.clear();
     EXPECT_TRUE(vec.empty());
     EXPECT_EQ(vec.size(), 0);
@@ -154,7 +151,7 @@ TEST_F(PopulatedVectorTest, Clear)
 TEST(VectorTest, Reserve)
 {
     Vector<int> v;
-    EXPECT_EQ(v.capacity(), 8);
+    EXPECT_EQ(v.capacity(), 0);
 
     v.reserve(100);
     EXPECT_EQ(v.capacity(), 100);

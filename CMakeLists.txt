@@ -3,8 +3,6 @@ project(TemplatedContainers)
 
 find_package(GTest REQUIRED)
 
-enable_testing()
-
 add_executable(
     all_tests
     tests/testvec.cpp
@@ -22,6 +20,3 @@ target_link_libraries(
     PRIVATE
         GTest::gtest_main
 )
-
-include(GoogleTest)
-gtest_discover_tests(all_tests)

@@ -7,6 +7,7 @@
 #include <utility>
 #include <cstddef>
 
+
 template <typename T, typename Allocator = std::allocator<T>>
 class Vector
 {   
@@ -15,6 +16,7 @@ class Vector
 
     using value_type             = T;
     using allocator_type         = Allocator;
+    using alloc_traits           = std::allocator_traits<Allocator>;
     using size_type              = std::size_t;
     using difference_type        = std::ptrdiff_t;
     using reference              = value_type&;
@@ -31,7 +33,11 @@ public:
       Special Member Functions 
 ***********************************/
     constexpr Vector() { }
-    ~Vector() { clear(); }
+    ~Vector() 
+    { 
+        clear(); 
+        alloc_traits::deallocate(alloc_, data_, capacity_);
+    }
 
     explicit Vector(const allocator_type& alloc)
         : alloc_(alloc)
@@ -42,7 +48,7 @@ public:
         : size_(n),
           capacity_(n)
     {
-        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+        data_ = alloc_traits::allocate(alloc_, capacity_);
         std::uninitialized_default_construct_n(data_, size_);
     }
 
@@ -51,7 +57,7 @@ public:
         : size_(n),
           capacity_(n)
     {
-        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+        data_ = alloc_traits::allocate(alloc_, capacity_);
         std::uninitialized_fill_n(data_, size_, val);
     }
 
@@ -60,7 +66,7 @@ public:
         : size_(init.size()),
           capacity_(init.size())
     {
-        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+        data_ = alloc_traits::allocate(alloc_, capacity_);
         std::ranges::uninitialized_copy(init, data_);
     }
 
@@ -70,10 +76,10 @@ public:
         size_ = other.size_;
         capacity_ = other.capacity_;
 
-        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+        data_ = alloc_traits::allocate(alloc_, capacity_);
 
-        for (int i{}; i<size_; ++i)
-            data_[i] = other.data_[i];
+        for (size_type i{}; i<size_; ++i)
+            alloc_traits::construct(alloc_, data_+i, other.data_[i]);
     }
 
 
@@ -83,15 +89,15 @@ public:
             return *this;
 
         std::destroy(data_, data_+size_);
-        std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
+        alloc_traits::deallocate(alloc_, data_, capacity_);
 
         size_ = other.size_;
         capacity_ = other.capacity_;
 
-        data_ = std::allocator_traits<allocator_type>::allocate(alloc_, capacity_);
+        data_ = alloc_traits::allocate(alloc_, capacity_);
 
-        for (int i{}; i<size_; ++i)
-            data_[i] = other.data_[i];
+        for (size_type i{}; i<size_; ++i)
+            alloc_traits::construct(alloc_, data_+i, other.data_[i]);
 
         return *this;
     }
@@ -134,8 +140,8 @@ public:
         size_ = count;
         if (count > capacity_)
         {
-            std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
-            data_ = std::allocator_traits<allocator_type>::allocate(alloc_, count);
+            alloc_traits::deallocate(alloc_, data_, capacity_);
+            data_ = alloc_traits::allocate(alloc_, count);
             capacity_ = count;
         }
         std::uninitialized_fill_n(data_, count, val);
@@ -149,13 +155,13 @@ public:
 ***********************************/
     [[nodiscard]] constexpr reference at(size_type idx)
     {
-        if (idx < 0 || idx >= size_) throw std::out_of_range("Index out of range.");
+        if (idx >= size_) throw std::out_of_range("Index out of range.");
         return data_[idx];
     }
 
     [[nodiscard]] constexpr const_reference at(size_type idx) const
     {
-        if (idx < 0 || idx >= size_) throw std::out_of_range("Index out of range.");
+        if (idx >= size_) throw std::out_of_range("Index out of range.");
         return data_[idx];
     }
 
@@ -202,8 +208,19 @@ public:
 
     constexpr void reserve(size_type new_capacity_)
     {
-        if (new_capacity_ > capacity_)
-            resize(new_capacity_);
+        if (new_capacity_ <= capacity_) 
+            return;
+
+        pointer new_data_ = alloc_traits::allocate(alloc_, new_capacity_);
+
+        for (size_type i{}; i < size_; ++i)
+            alloc_traits::construct(alloc_, new_data_ + i, std::move(data_[i]));
+
+        std::destroy(data_, data_+size_);
+        alloc_traits::deallocate(alloc_, data_, capacity_);
+
+        data_ = new_data_;
+        capacity_ = new_capacity_;
     }
 
     constexpr void shrink_to_fit() { resize(size_); } 
@@ -216,11 +233,7 @@ public:
     constexpr void clear() noexcept
     {
         std::destroy(data_, data_+size_);
-        std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
-
-        data_ = nullptr;
         size_ = 0;
-        capacity_ = 0;
     }
 
 
@@ -246,28 +259,30 @@ public:
     constexpr void push_back(U&& val)
     {
         grow_if_full_();
-        data_[size_] = std::forward<U>(val);
+        alloc_traits::construct(alloc_, data_ + size_, std::forward<U>(val));
         ++size_;
     }
 
 
-    constexpr void pop_back() noexcept { std::destroy_at(data_ + --size_); }
+    constexpr void pop_back() { std::destroy_at(data_ + --size_); }
 
 
     constexpr void resize(size_type new_capacity_)
     {
-        if (new_capacity_ < size_)
-        {
-            std::destroy(data_+new_capacity_, data_+size_);
-            size_ = new_capacity_;
-        }
+        size_type new_size_ = std::min(size_, new_capacity_);
+        pointer new_data_ = alloc_traits::allocate(alloc_, new_capacity_);
 
-        pointer new_data_ = std::allocator_traits<allocator_type>::allocate(alloc_, new_capacity_);
-        for (int i{}; i<size_; ++i)
-            new_data_[i] = std::move(data_[i]);
+        for (size_type i{}; i<size_ && i<new_capacity_; ++i)
+            alloc_traits::construct(alloc_, new_data_ + i, std::move(data_[i]));
 
-        std::allocator_traits<allocator_type>::deallocate(alloc_, data_, capacity_);
+        for (size_type i{size_}; i<new_capacity_; ++i)
+            alloc_traits::construct(alloc_, new_data_ + i);
 
+
+        std::destroy(data_, data_+size_);
+        alloc_traits::deallocate(alloc_, data_, capacity_);
+
+        size_ = new_size_;
         capacity_ = new_capacity_;
         data_ = new_data_;
     }
@@ -284,28 +299,35 @@ public:
 
 
 private: 
+    static constexpr size_type INIT_CAPACITY{ 2 };
+
     [[no_unique_address]] allocator_type alloc_{};
     pointer   data_{ nullptr };
     size_type size_{};
     size_type capacity_{};
 
-    constexpr void grow_if_full_() { if (size_ == capacity_) { resize(capacity_*2); }  }
-    constexpr void shift_data_(size_t start, int shift)
+    constexpr void grow_if_full_() 
+    { 
+        if (size_ == capacity_) 
+            resize(capacity_ > 0 ? capacity_*2 : INIT_CAPACITY);  
+    }
+
+    constexpr void shift_data_(size_type start, int shift)
     {
-        size_t new_size_ = size_ + shift;
+        size_type new_size_ = size_ + shift;
         if (new_size_ > capacity_) 
             resize(new_size_*2);
 
-        size_t offset = shift < 0 ? -shift : shift;
+        size_type offset = shift < 0 ? -shift : shift;
         if (shift > 0)
         {
-            for (int i{size_+offset-1}; i>start+offset; --i)
+            for (size_type i{size_+offset-1}; i>start+offset; --i)
                 data_[i] = std::move(data_[i-offset]);
         }
         else
         {
             std::destroy(data_+start, data_+start+offset);
-            for (size_t i{start}; i<start+offset; ++i)
+            for (size_type i{start}; i<start+offset; ++i)
                 data_[i] = std::move(data_[i+offset]);
         }
 
@@ -324,6 +346,8 @@ public:
     Iterator(pointer ptr)
         : ptr_(ptr)
     { }
+
+
 
     constexpr Iterator& operator=(const Iterator& other) noexcept 
     {
@@ -366,7 +390,7 @@ public:
 
     constexpr Iterator& operator-=(Vector::difference_type n) noexcept
     {
-        ptr_ += n;
+        ptr_ -= n;
         return *this;
     }
 
