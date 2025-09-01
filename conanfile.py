@@ -55,14 +55,18 @@ class SetUp(ConanFile):
         self.requires("gtest/1.17.0")
     
     def generate(self):
+        cmake = CMakeToolchain(self)
+
+        if self.settings.compiler == "gcc":
+            cmake.variables["CMAKE_C_COMPILER"] = "gcc"
+            cmake.variables["CMAKE_CXX_COMPILER"] = "g++"
+
+        cmake.generator = "Ninja"
+        cmake.generate()
+
         deps = CMakeDeps(self)
         deps.generate()
         
-        tc = CMakeToolchain(self)
-        if self.settings.compiler.cppstd:
-            tc.variables["CMAKE_CXX_STANDARD"] = str(self.settings.compiler.cppstd)
-            tc.variables["CMAKE_CXX_STANDARD_REQUIRED"] = "ON"
-        tc.generate()
 
     def layout(self):
         cmake_layout(self)
