@@ -6,15 +6,17 @@
 #include <type_traits>
 #include <utility>
 #include <cstddef>
+#include <ranges>
+#include <concepts>
 
 
 template <typename T, typename Allocator = std::allocator<T>>
 class Vector
 {   
+public:
     template <bool IsConst>
     class Iterator;
 
-public:
     using value_type             = T;
     using allocator_type         = Allocator;
     using alloc_traits           = std::allocator_traits<Allocator>;
@@ -49,7 +51,7 @@ public:
           capacity_(n)
     {
         data_ = alloc_traits::allocate(alloc_, capacity_);
-        std::uninitialized_default_construct_n(data_, size_);
+        std::uninitialized_value_construct_n(data_, size_);
     }
 
     explicit Vector(size_type n, const_reference val)
@@ -65,19 +67,16 @@ public:
           capacity_(init.size())
     {
         data_ = alloc_traits::allocate(alloc_, capacity_);
-        std::ranges::uninitialized_copy(init, data_);
+        std::ranges::uninitialized_copy(init, std::ranges::subrange(data_, data_+size_));
     }
 
 
     Vector(const Vector& other)
+        : size_(other.size_),
+          capacity_(other.size_)
     {
-        size_ = other.size_;
-        capacity_ = other.capacity_;
-
         data_ = alloc_traits::allocate(alloc_, capacity_);
-
-        for (size_type i{}; i<size_; ++i)
-            alloc_traits::construct(alloc_, data_+i, other.data_[i]);
+        std::uninitialized_copy_n(other.data_, size_, data_);
     }
 
 
@@ -103,8 +102,15 @@ public:
 
     constexpr Vector& operator=(Vector&& other) noexcept
     {
+        if (this == &other)
+            return *this;
+
+        clear();
+        alloc_traits::deallocate(alloc_, data_, capacity_);
+
         swap(other);
         other.moved_from_state_();
+
         return *this;
     }
 
@@ -187,9 +193,7 @@ public:
             return;
 
         pointer new_data_ = alloc_traits::allocate(alloc_, new_capacity_);
-
-        for (size_type i{}; i < size_; ++i)
-            alloc_traits::construct(alloc_, new_data_ + i, std::move(data_[i]));
+        std::uninitialized_move_n(data_, size_, new_data_);
 
         std::destroy(data_, data_+size_);
         alloc_traits::deallocate(alloc_, data_, capacity_);
@@ -198,7 +202,18 @@ public:
         capacity_ = new_capacity_;
     }
 
-    constexpr void shrink_to_fit() { resize(size_); } 
+    constexpr void shrink_to_fit() 
+    { 
+        if (size_ == capacity_) return;
+        pointer new_data_ = alloc_traits::allocate(alloc_, size_);
+        std::uninitialized_move_n(data_, size_, new_data_);
+        
+        std::destroy(data_, data_+size_); 
+        alloc_traits::deallocate(alloc_, data_, capacity_);
+
+        data_ = new_data_;
+        capacity_ = size_;
+    }
 
 
 /***********************************
@@ -214,52 +229,65 @@ public:
 
     template<typename U>
     constexpr iterator insert(const_iterator pos, U&& val)
-    { 
-        difference_type idx = pos-cbegin();
-        shift_data_(idx, 1);
-        data_[idx] = std::forward<U>(val);
+    { return emplace(pos, std::forward<U>(val)); }
+
+
+    template<typename... Args>
+    constexpr iterator emplace(const_iterator pos, Args&&... args)
+    {
+        difference_type idx = pos - cbegin();
+
+        grow_if_full_();
+
+        std::move_backward(data_+idx, data_+size_, data_+size_+1);
+
+        alloc_traits::construct(alloc_, data_+idx, std::forward<Args>(args)...);
+        ++size_;
+
         return iterator{data_+idx};
     }
+
+
+    template<typename... Args>
+    constexpr iterator emplace_back(Args&&... args)
+    { return emplace(cend(), std::forward<Args>(args)...); }
 
 
     constexpr iterator erase(const_iterator pos)
     {
         difference_type idx = pos-cbegin();
-        shift_data_(idx, -1);
+
+        std::move(data_+idx+1, data_+size_, data_+idx);
+
+        std::destroy_at(data_+size_-1);
+        --size_;
+
         return iterator{data_+idx};
     }
 
 
     template <typename U>
     constexpr void push_back(U&& val)
-    {
-        grow_if_full_();
-        alloc_traits::construct(alloc_, data_ + size_, std::forward<U>(val));
-        ++size_;
-    }
+    { emplace_back(std::forward<U>(val)); }
 
 
     constexpr void pop_back() { std::destroy_at(data_ + --size_); }
 
 
-    constexpr void resize(size_type new_capacity_)
+    constexpr void resize(size_type new_size_)
     {
-        size_type new_size_ = std::min(size_, new_capacity_);
-        pointer new_data_ = alloc_traits::allocate(alloc_, new_capacity_);
-
-        for (size_type i{}; i<size_ && i<new_capacity_; ++i)
-            alloc_traits::construct(alloc_, new_data_ + i, std::move(data_[i]));
-
-        for (size_type i{size_}; i<new_capacity_; ++i)
-            alloc_traits::construct(alloc_, new_data_ + i);
-
-
-        std::destroy(data_, data_+size_);
-        alloc_traits::deallocate(alloc_, data_, capacity_);
+        
+        if (new_size_ > capacity_)
+        {
+            reserve(new_size_);
+            std::uninitialized_value_construct(data_+size_, data_+new_size_);
+        }
+        else
+        {
+            std::destroy(data_+new_size_, data_+size_);
+        }
 
         size_ = new_size_;
-        capacity_ = new_capacity_;
-        data_ = new_data_;
     }
 
 
@@ -284,32 +312,11 @@ private:
     constexpr void grow_if_full_() 
     { 
         if (size_ == capacity_) 
-            resize(capacity_ > 0 ? capacity_*2 : INIT_CAPACITY);  
+            reserve(capacity_ > 0 ? capacity_*2 : INIT_CAPACITY);  
     }
 
-    constexpr void shift_data_(size_type start, int shift)
-    {
-        size_type new_size_ = size_ + shift;
-        if (new_size_ > capacity_) 
-            resize(new_size_*2);
 
-        size_type offset = shift < 0 ? -shift : shift;
-        if (shift > 0)
-        {
-            for (size_type i{size_+offset-1}; i>start+offset; --i)
-                data_[i] = std::move(data_[i-offset]);
-        }
-        else
-        {
-            std::destroy(data_+start, data_+start+offset);
-            for (size_type i{start}; i<start+offset; ++i)
-                data_[i] = std::move(data_[i+offset]);
-        }
-
-        size_ = new_size_;
-    }
-
-    constexpr void moved_from_state_()
+    constexpr void moved_from_state_() noexcept
     {
         data_ = nullptr;
         size_ = 0;
@@ -331,21 +338,21 @@ public:
     using reference         = std::conditional_t<IsConst, Vector::const_reference, Vector::reference>;
 
 public:
+    Iterator() = default;
     Iterator(pointer ptr)
         : ptr_(ptr)
     { }
 
-    constexpr auto operator<=>(const Iterator& other) const = default;
+    template <bool OtherConst>
+        requires(IsConst && !OtherConst)
+    Iterator(const Iterator<OtherConst>& other)
+        : ptr_(other.ptr_)
+    { }
 
-    [[nodiscard]] constexpr reference operator*() { return *ptr_; }
-    [[nodiscard]] constexpr pointer operator->() { return ptr_; }
-    [[nodiscard]] constexpr reference operator[](size_type n) { return *(ptr_ + n); }
 
-    constexpr Iterator& operator=(const Iterator& other) noexcept 
-    {
-        ptr_ = other.ptr_;
-        return *this;
-    }
+    [[nodiscard]] constexpr reference operator*() const noexcept { return *ptr_; }
+    [[nodiscard]] constexpr pointer operator->() const noexcept { return ptr_; }
+    [[nodiscard]] constexpr reference operator[](size_type n) const noexcept { return *(ptr_ + n); }
 
     constexpr Iterator& operator++() noexcept 
     { 
@@ -393,9 +400,7 @@ public:
     }
 
     friend constexpr Iterator operator+(difference_type n, Iterator lhs) noexcept
-    {
-        return lhs + n;
-    }
+    { return lhs + n; }
 
     friend constexpr Iterator operator-(Iterator lhs, difference_type n)
     {
@@ -403,29 +408,37 @@ public:
         return lhs;
     }
 
-    friend constexpr difference_type operator-(const Iterator& lhs, const Iterator& rhs)
-    {
-        return lhs.ptr_ - rhs.ptr_;
-    }
+    template <bool OtherConst>
+    friend constexpr difference_type operator-(const Iterator& lhs, const Iterator<OtherConst>& rhs)
+    { return lhs.ptr_ - rhs.ptr_; }
 
+    template <bool OtherConst>
+    constexpr bool operator==(const Iterator<OtherConst>& other) const noexcept
+    { return ptr_ == other.ptr_; }
 
+    template <bool OtherConst>
+    constexpr auto operator<=>(const Iterator<OtherConst>& other) const noexcept
+    { return ptr_ <=> other.ptr_; }
 
 private:
+    static_assert(std::indirectly_readable<Iterator>);
     pointer ptr_;
 };
+
 
 /***********************************
         Non-member functions 
 ***********************************/
 
+
 template <typename T, typename Allocator>
-constexpr void swap(const Vector<T, Allocator>& lhs, const Vector<T, Allocator>& rhs)
+constexpr void swap(Vector<T, Allocator>& lhs, Vector<T, Allocator>& rhs)
 noexcept(noexcept(lhs.swap(rhs)))
 { lhs.swap(rhs); }
 
 template <typename T, typename Allocator>
 constexpr bool operator==(const Vector<T, Allocator>& lhs, const Vector<T, Allocator>& rhs) noexcept
-{ return (lhs.size() == rhs.size()) && std::ranges::equal(lhs, rhs); }
+{ return std::ranges::equal(lhs, rhs); }
 
 template <typename T, typename Allocator>
 constexpr auto operator<=>(const Vector<T, Allocator>& lhs, const Vector<T, Allocator>& rhs) noexcept
