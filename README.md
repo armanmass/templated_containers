@@ -25,7 +25,7 @@ note: built/ran testing on GCC 15.2 with C++23 but should still work with older 
 ### Step 4: Run the Tests
 
 ```bash
-./build/Release/all_tests
+./run_all.sh
 ```
 
 Expected output:
